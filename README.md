@@ -972,6 +972,13 @@ $ kubectl delete pod  pod名称
 $ kubectl delete -f pod.yml
 # 强制删除pod
 $ kubectl delete pod [nginx-f79dfdd68-nvnct] -n kube-public --force --grace-period=0
+# 通过label删除
+$ kubectl delete pod -l env=test
+# 通过namespace删除，删除整个命名空间 pod将会伴随命名空间自动删除
+$ kubectl delete -ns kubec-public 
+
+# 删除命名空间中的所有pod，但保留命名空间
+kubectl delete pod --all
 ```
 
 #### 2.4 进入 pod 中容器
@@ -981,6 +988,7 @@ $ kubectl delete pod [nginx-f79dfdd68-nvnct] -n kube-public --force --grace-peri
 $ kubectl exec -it nginx(pod名称) --(固定写死) bash(执行命令)
 # 注意: 进入指定 pod 中指定容器
 $ kubectl exec -it pod名称 -c 容器名称 --(固定写死) bash(执行命令)
+$ kubectl exec -it nginx-69698bd968-hsn4t -n kube-public -- bash
 ```
 
 #### 2.5 查看 pod 日志
@@ -1045,8 +1053,18 @@ $ kubectl logs -f myapp -c redis(容器名称)
 $ kubectl exec -it myapp -- sh
 
 # 进入 pod 中指定容器内部
+kubectl exec -it <pod> -c <container> -- bash
 $ kubectl exec -it myapp -c nginx -- sh
 $ kubectl exec -it myapp -c redis -- sh
+```
+
+#### 3.4 在容器内容执行命令
+
+```shell
+# 直接在
+kubectl exec -c <container> <pod> -n <namespace> -- command
+ 
+kubectl exec -c <container> <pod> -n <namespace> -- sh -c "command"
 ```
 
 ### 4 Pod 的 Labels(标签)
@@ -1147,7 +1165,7 @@ Kubernetes 会跟踪 Pod 中每个容器的状态，就像它跟踪 Pod 总体�
 
 一旦调度器将 Pod 分派给某个节点，`kubelet` 就通过容器运行时开始为 Pod 创建容器。容器的状态有三种：`Waiting`（等待）、`Running`（运行中）和 `Terminated`（已终止）。
 
-要检查 Pod 中容器的状态，你可以使用 `kubectl describe pod <pod 名称>`。 其输出中包含 Pod 中每个容器的状态。
+要检查 Pod 中容器的状态，你可以使用 `kubectl describe pod <pod 名称>`。 其输出中包含 Pod 中**每个容器**的状态。
 
 每种状态都有特定的含义：
 
@@ -1201,6 +1219,10 @@ spec:
 #### 6.3 容器重启策略
 
 Pod 的 `spec` 中包含一个 `restartPolicy` 字段，其可能取值包括 `Always(总是重启)、OnFailure(容器异常退出状态码非 0,重启) 和 Never`。默认值是 `Always`。
+
+- Always 无论容器是正常停止还是异常停止，都会重启
+- OnFailure 正常退出不会重启容器，异常退出则会重启
+- Never 容器是正常退出还是异常退出，正常退出容器状态为Completed，异常退出如kill退出状态为Error
 
 `restartPolicy` 适用于 Pod 中的所有容器。`restartPolicy` 仅针对同一节点上 `kubelet` 的容器重启动作。当 Pod 中的容器退出时，`kubelet` 会按指数回退方式计算重启的延迟（10s、20s、40s、...），其最长延迟为 5 分钟。 一旦某容器执行了 10 分钟并且没有出现问题，`kubelet` 对该容器的重启回退计时器执行重置操作。
 
@@ -1289,11 +1311,11 @@ probe 是由 kubelet对容器执行的定期诊断。 要执行诊断，kubelet 
 **探针参数**
 
 ```yml
-initialDelaySeconds: 5   #初始化时间5s
-periodSeconds: 4             #检测间隔时间4s
-timeoutSeconds: 1               #默认检测超时时间为1s
-failureThreshold: 3           #默认失败次数为3次，达到3次后重启pod
-successThreshold: 1        #默认成功次数为1次，1次监测成功代表成功
+initialDelaySeconds: 5   #初始化时间5s，在初始容器时，什么时候执行健康检查
+periodSeconds: 4         #检测间隔时间4s，每隔多长时间执行执行一次健康检查
+timeoutSeconds: 1        #默认检测超时时间为1s，健康检查检测后超时时间，就认为失败
+failureThreshold: 3      #默认失败次数为3次，达到3次后重启pod
+successThreshold: 1      #默认成功次数为1次，1次监测成功代表成功
 ```
 
 **使用探针**
@@ -1357,7 +1379,7 @@ spec:
     imagePullPolicy: IfNotPresent
     livenessProbe:
       tcpSocket:
-        port: 80
+        port: 80 #通过检测某些服务端口是否正常
       initialDelaySeconds: 5   #初始化时间5s
       periodSeconds: 4    #检测间隔时间4s
       timeoutSeconds: 1   #默认检测超时时间为1s
