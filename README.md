@@ -1108,6 +1108,7 @@ spec:
 # 查看标签
 $ kubectl get pods --show-labels
 
+# 给pod添加标签
 # kubectl label pod pod名称 标签键值对
 $ kubectl label pod myapp env=prod
 
@@ -1222,7 +1223,7 @@ Pod 的 `spec` 中包含一个 `restartPolicy` 字段，其可能取值包括 `A
 
 - Always 无论容器是正常停止还是异常停止，都会重启
 - OnFailure 正常退出不会重启容器，异常退出则会重启
-- Never 容器是正常退出还是异常退出，正常退出容器状态为Completed，异常退出如kill退出状态为Error
+- Never 容器是正常退出还是异常退出，正常退出容器状态为Completed，异常退出如kill退出状态为Error，都不会重启
 
 `restartPolicy` 适用于 Pod 中的所有容器。`restartPolicy` 仅针对同一节点上 `kubelet` 的容器重启动作。当 Pod 中的容器退出时，`kubelet` 会按指数回退方式计算重启的延迟（10s、20s、40s、...），其最长延迟为 5 分钟。 一旦某容器执行了 10 分钟并且没有出现问题，`kubelet` 对该容器的重启回退计时器执行重置操作。
 
@@ -1788,6 +1789,8 @@ init 容器与普通的容器非常像，除了如下几点：
 
 在 Pod 的规约中与用来描述应用容器的 `containers` 数组平行的位置指定 Init 容器。
 
+比如：在其他应用容器时，可以先通过init容器检查数据库是否连接正常
+
 ```yaml
 apiVersion: v1
 kind: Pod
@@ -1829,6 +1832,8 @@ Events:
   Normal  Started    101s   kubelet            Started container myapp-container
 ```
 
+![](K8s.assets\init-container.png)
+
 ### 8 节点亲和性分配 Pod
 
 >  官方地址: http://kubernetes.p2hp.com/docs/concepts/scheduling-eviction/assign-pod-node.html
@@ -1837,10 +1842,10 @@ Events:
 
 你可以使用下列方法中的任何一种来选择 Kubernetes 对特定 Pod 的调度：
 
-- 与节点标签匹配的 nodeSelector  **推荐**
-- 亲和性与反亲和性 **推荐**
-- nodeName
-- Pod 拓扑分布约束 **推荐**
+- 与节点标签匹配的 nodeSelector  **推荐**：各每个节点添加A和B标签，根据创建标签指定节点创建pod。但是指定C标签，但没有C标签就会等待
+- 亲和性与反亲和性 **推荐**：比如根据通过的表达时进行创建pod，满足则指定pod创建，不满足则不创建
+- nodeName：直接指定k8s的节点，比如k8s-node2指定到2节点上
+- Pod 拓扑分布约束 **推荐**：根据不同的网络段，比如上海区，北京区
 
 >  **`定义: 使用节点亲和性可以把 Kubernetes Pod 分配到特定节点。`**
 
@@ -1864,7 +1869,7 @@ Events:
   ```
 
 - 验证你所选节点具有 `disktype=ssd` 标签：
-  
+
   ```shell
   $ kubectl get nodes --show-labels
   #输出类似于此：
@@ -1872,6 +1877,13 @@ Events:
   k8s-node1   Ready    control-plane   10d   v1.26.0   beta.kubernetes.io/arch=arm64,beta.kubernetes.io/os=linux,disktype=ssd...
   k8s-node2   Ready    <none>          10d   v1.26.0   beta.kubernetes.io/arch=arm64,beta.kubernetes.io/os=linux...
   k8s-node3   Ready    <none>          10d   v1.26.0   beta.kubernetes.io/arch=arm64,beta.kubernetes.io/os=linux...
+  
+  $ kubectl get nodes -l disktype=ssd
+  NAME        STATUS     ROLES    AGE    VERSION
+  k8s-node2   NotReady   <none>   107d   v1.26.0
+  $ kubectl get nodes -l disktype=ssd -o wide
+  NAME        STATUS     ROLES    AGE    VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE                KERNEL-VERSION           CONTAINER-RUNTIME
+  k8s-node2   NotReady   <none>   107d   v1.26.0   10.15.0.22    <none>        CentOS Linux 7 (Core)   3.10.0-1160.el7.x86_64   containerd://1.6.24
   ```
 
 #### 8.2 根据选择节点标签指派 pod 到指定节点[nodeSelector]
@@ -1892,6 +1904,10 @@ spec:
     disktype: ssd  # 选择节点为标签为 ssd 的节点
 ```
 
+如果多个节点同时都有disktype=ssd，则分配到资源足够节点上
+
+如果标签找不到disktype=machinery，则pod状态为pending等待状态
+
 #### 8.3 根据节点名称指派 pod 到指定节点[nodeName]
 
 ```yml
@@ -1900,7 +1916,7 @@ kind: Pod
 metadata:
   name: nginx
 spec:
-  nodeName: worker1    # 调度 Pod 到特定的节点
+  nodeName: k8s-node2 # 调度Pod到特定的节点，找不到节点pod状态为pending
   containers:
   - name: nginx
     image: nginx
