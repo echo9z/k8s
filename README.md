@@ -1937,8 +1937,8 @@ spec:
 
 **亲和性功能由两种类型的亲和性组成：**
 
-- **节点亲和性**功能类似于 `nodeSelector` 字段，但它的表达能力更强，并且允许你指定软规则。
-- Pod 间亲和性/反亲和性允许你根据其他 Pod 的标签来约束 Pod。
+- **节点亲和性**功能类似于 `nodeSelector` 字段，但它的表达能力更强，并且允许你指定软规则。`pod如果与节点亲，则将pod调度到该节点`
+- Pod 间亲和性/反亲和性允许你根据其他 Pod 的标签来约束 Pod。`pod如果和所在的某个节点上pod亲，则将pod调度到对应亲pod上的节点上`
 
 节点亲和性概念上类似于 `nodeSelector`， 它使你可以根据节点上的标签来约束 Pod 可以调度到哪些节点上。 节点亲和性有两种：
 
@@ -2004,9 +2004,61 @@ spec:
     image: nginx:1.19
 ```
 
+eg
+
+```yml
+# 节点亲和性
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nodeaffinity
+  labels:
+    app: nodeaffinity
+    type: nginx
+spec:
+  affinity:
+    nodeAffinity:
+      # 节点必须包含一个键为disktype标签，并且值为fast 或者 superfast
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: disktype
+                operator: In
+                values:
+                  - fast
+                  - superfast
+      # 根据权重优先查找cpu为intel，intel不存在，则找为amd。如果找不到对应节点，调度器任然会调度pod到任意的节点上
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - preference:
+            matchExpressions:
+              - key: cpu
+                operator: In
+                values:
+                  - intel
+          weight: 90 # 取值范围是 1 到 100
+        - preference:
+            matchExpressions:
+              - key: cpu
+                operator: In
+                values:
+                  - amd
+          weight: 70
+
+  containers:
+    - name: nodeaffinity
+      image: nginx:1.21
+      resources:
+        limits:
+          memory: "128Mi"
+          cpu: "500m"
+      ports:
+        - containerPort: 80
+# require和preferred同时存在，优先查找require
+```
+
 #### 8.6 pod 间亲和性和反亲和性及权重
 
-与节点亲和性类似，Pod 的亲和性与反亲和性也有两种类型：
+与节点亲和性类似，Pod 的亲和性与反亲和性也有两种类型：(使用场景比如两个服务通信比较密切)
 
 - `requiredDuringSchedulingIgnoredDuringExecution`
 - `preferredDuringSchedulingIgnoredDuringExecution`
@@ -2040,6 +2092,8 @@ spec:
                 values:
                   - nginx
 ```
+
+注意：topologyKey引出一个域概念，比如北美打上NA标签，南美打上SA标签，当调度pod需要在标签为app=nginx的pod间的节点上时，如果没有域的需要将北美和南美上pod都要查找一遍。有了topologyKey域，就可以在指定域上快速的调度pod到对应的节点上。这里相当于node节点的在分组北美所有节点一个组，南美节点一个组。
 
 - **pod 间亲和性权重**
 
@@ -2080,9 +2134,192 @@ spec:
           weight: 30
 ```
 
+eg：
+
+```yml
+# pod间亲和性
+apiVersion: v1
+kind: Pod
+metadata:
+  name: podaffinity
+  labels:
+    app: podaffinity
+spec:
+  affinity:
+    podAffinity:
+      # 查找sa域下 pod中必须包含一个键为app标签，并且值为nodeaffinity的节点
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - topologyKey: na
+          labelSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - nodeaffinity
+      # 根据权重优先查找域为sa，且pod标签中为app包含xxx，如果找不到，则在域na中，查找标签type=nginx的pod，如果存在则调度该节点上。如果找不到对应节点，调度器任然会调度pod到任意的节点上
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - podAffinityTerm:
+            topologyKey: sa
+            labelSelector:
+              matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                    - xxx
+          weight: 90 # 取值范围是 1 到 100
+        - podAffinityTerm:
+            topologyKey: na
+            labelSelector:
+              matchExpressions:
+                - key: type
+                  operator: In
+                  values:
+                    - nginx
+          weight: 70
+
+  containers:
+    - name: podaffinity
+      image: redis:5.0.10
+      resources:
+        limits:
+          memory: "128Mi"
+          cpu: "500m"
+      ports:
+        - containerPort: 6379
+# require和preferred同时存在，优先查找require
+```
+
 #### 8.7 污点和容忍度
 
 参考: http://kubernetes.p2hp.com/docs/concepts/scheduling-eviction/taint-and-toleration.html
+
+节点亲和性 和 pod 的一种属性，它使 Pod 被吸引到一类特定的节点 （这可能出于一种偏好，也可能是硬性要求）。 
+
+**污点（Taint）** 则相反——它使节点能够排斥一类特定的 Pod。
+
+**容忍度（Toleration）** 是应用于 Pod 上的。容忍度允许调度器调度带有对应污点的 Pod。 容忍度允许调度但并不保证调度：作为其功能的一部分， 调度器也会[评估其他参数](https://kubernetes.p2hp.com/docs/concepts/scheduling-eviction/pod-priority-preemption.html)。
+
+污点和容忍度（Toleration）相互配合，可以用来避免 Pod 被分配到不合适的节点上。 每个节点上都可以应用一个或多个污点，这表示对于那些不能容忍这些污点的 Pod， 是不会被该节点接受的。
+
+使用命令 [kubectl taint](https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#taint) 给节点增加一个污点。比如，
+
+```shell
+kubectl taint nodes node1 key1=value1:NoSchedule
+```
+
+给节点 `node1` 增加一个污点，它的键名是 `key1`，键值是 `value1`，效果是 `NoSchedule`。 这表示只有拥有和这个污点相匹配的容忍度的 Pod 才能够被分配到 `node1` 这个节点。
+
+若要移除上述命令所添加的污点，你可以执行：
+
+```shell
+kubectl taint nodes node1 key1=value1:NoSchedule-
+```
+
+查看节点上的污点
+
+```yml
+kubectl describe node k8s-n3 |grep Taints
+```
+
+可以在 Pod 规约中为 Pod 设置容忍度。 下面两个容忍度均与上面例子中使用 `kubectl taint` 命令创建的污点相匹配， 因此如果一个 Pod 拥有其中的任何一个容忍度，都能够被调度到 `node1` 
+
+```yaml
+tolerations:
+- key: "key1"
+  operator: "Equal"
+  value: "value1"
+  effect: "NoSchedule"
+tolerations:
+- key: "key1"
+  operator: "Exists"
+  effect: "NoSchedule"
+```
+
+使用了容忍度的 Pod：
+
+```yml
+# 污点和容忍度
+apiVersion: v1
+kind: Pod
+metadata:
+  name: taint
+  labels:
+    app: taint
+spec:
+  containers:
+    - name: taint
+      image: redis:5.0.10
+      resources:
+        limits:
+          memory: "128Mi"
+          cpu: "500m"
+      ports:
+        - containerPort: 6379
+  # 容忍度，查找Equal相等的节点，将pod调度在节点上
+  tolerations:
+    - key: "ntaint"
+      operator: Equal
+      value: "slow"
+      effect: NoSchedule
+```
+
+`operator` 的默认值是 `Equal`。
+
+一个容忍度和一个污点相“匹配”是指它们有一样的键名和效果，并且：
+
+- 如果 `operator` 是 `Exists` （此时容忍度不能指定 `value`），或者
+- 如果 `operator` 是 `Equal` ，则它们的 `value` 应该相等
+
+> 存在两种特殊情况：
+>
+> 如果一个容忍度的 `key` 为空且 `operator` 为 `Exists`， 表示这个容忍度与任意的 key、value 和 effect 都匹配，即这个容忍度能容忍任何污点。
+>
+> 如果 `effect` 为空，则可以与所有键名 `key1` 的效果相匹配。
+
+上述例子中 `effect` 使用的值为 `NoSchedule`，你也可以使用另外一个值 `PreferNoSchedule`。 这是“优化”或“软”版本的 `NoSchedule` —— 系统会 **尽量** 避免将 Pod 调度到存在其不能容忍污点的节点上， 但这不是强制的。`effect` 的值还可以设置为 `NoExecute`，下文会详细描述这个值。
+
+你可以给一个节点添加多个污点，也可以给一个 Pod 添加多个容忍度设置。 Kubernetes 处理多个污点和容忍度的过程就像一个过滤器：从一个节点的所有污点开始遍历， 过滤掉那些 Pod 中存在与之相匹配的容忍度的污点。余下未被过滤的污点的 effect 值决定了 Pod 是否会被分配到该节点。需要注意以下情况：
+
+- 如果未被忽略的污点中存在至少一个 effect 值为 `NoSchedule` 的污点， 则 Kubernetes 不会将 Pod 调度到该节点。
+- 如果未被忽略的污点中不存在 effect 值为 `NoSchedule` 的污点， 但是存在至少一个 effect 值为 `PreferNoSchedule` 的污点， 则 Kubernetes 会 **尝试** 不将 Pod 调度到该节点。
+- 如果未被忽略的污点中存在至少一个 effect 值为 `NoExecute` 的污点， 则 Kubernetes 不会将 Pod 调度到该节点（如果 Pod 还未在节点上运行）， 或者将 Pod 从该节点驱逐（如果 Pod 已经在节点上运行）。
+
+例如，假设你给一个节点添加了如下污点
+
+```shell
+kubectl taint nodes node1 key1=value1:NoSchedule
+kubectl taint nodes node1 key1=value1:NoExecute
+kubectl taint nodes node1 key2=value2:NoSchedule
+```
+
+假定某个 Pod 有两个容忍度：
+
+```yaml
+tolerations:
+- key: "key1"
+  operator: "Equal"
+  value: "value1"
+  effect: "NoSchedule"
+- key: "key1"
+  operator: "Equal"
+  value: "value1"
+  effect: "NoExecute"
+```
+
+在这种情况下，上述 Pod 不会被调度到上述节点，因为其没有容忍度和第三个污点相匹配。 但是如果在给节点添加上述污点之前，该 Pod 已经在上述节点运行， 那么它还可以继续运行在该节点上，因为第三个污点是三个污点中唯一不能被这个 Pod 容忍的。
+
+通常情况下，如果给一个节点添加了一个 effect 值为 `NoExecute` 的污点， 则任何不能忍受这个污点的 Pod 都会马上被驱逐，任何可以忍受这个污点的 Pod 都不会被驱逐。 但是，如果 Pod 存在一个 effect 值为 `NoExecute` 的容忍度指定了可选属性 `tolerationSeconds` 的值，则表示在给节点添加了上述污点之后， Pod 还能继续在节点上运行的时间。例如，
+
+```yaml
+tolerations:
+- key: "key1"
+  operator: "Equal"
+  value: "value1"
+  effect: "NoExecute"
+  tolerationSeconds: 3600
+```
+
+这表示如果这个 Pod 正在运行，同时一个匹配的污点被添加到其所在的节点， 那么 Pod 还将继续在节点上运行 3600 秒，然后被驱逐。 如果在此之前上述污点被删除了，则 Pod 不会被驱逐。
 
 #### 8.8 Pod 拓扑分布约束
 
