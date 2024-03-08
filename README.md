@@ -411,6 +411,10 @@ $ kubeadm init \
 # 添加新节点
 $ kubeadm token create --print-join-command --ttl=0
 $ kubeadm join 10.15.0.21:6443 --token t48iwk.o6381dpozmp1hzcl         --discovery-token-ca-cert-hash sha256:6c16d9fae67df59841645d8c600d54e47458e8d26c9d932071f2db991d160cba
+
+# 重新添加节点
+$ kubeadm reset #初始化当前节点
+$ kubeadm join 10.15.0.21:6443 --token t48iwk.o6381dpozmp1hzcl         --discovery-token-ca-cert-hash sha256:6c16d9fae67df59841645d8c600d54e47458e8d26c9d932071f2db991d160cba
 ```
 
 ##### 13 配置集群网络
@@ -629,7 +633,7 @@ spec:
       - name: xtables-lock
         hostPath:
           path: /run/xtables.lock
-          type: FileOrCreate
+          type: FileOrCreat
 ```
 
 ##### 14 查看集群状态
@@ -659,6 +663,29 @@ kube-system    kube-proxy-v2jfs                    1/1     Running   0          
 kube-system    kube-proxy-x6vhn                    1/1     Running   0          21h
 kube-system    kube-scheduler-k8s-node1            1/1     Running   0          21h
 ```
+
+##### 15 kubectl 自动补全命令 
+
+1.安装bash-completion(完成)工具
+
+```shell
+$ yum install bash-completion -y
+```
+
+2.执行bash_completion
+
+```shell
+$ source /usr/share/bash-completion/bash_completion
+```
+
+3.加载kubectl completion
+
+```shell
+source <(kubectl completion bash) # 在 bash 中设置当前 shell 的自动补全，要先安装 bash-completion 包。
+echo "source <(kubectl completion bash)" >> ~/.bashrc # 在您的 bash shell 中永久的添加自动补全
+```
+
+
 
 ---
 
@@ -2353,17 +2380,19 @@ tolerations:
   
   - ReplicaSet 实现了 Pod 的多副本管理。使用 Deployment 时会自动创建 ReplicaSet,也就是说 Deployment 是通过 ReplicaSet 来管理 Pod 的多个副本的，我们通常不需要直接使用 ReplicaSet。
 
-- `Daemonset` 用于每个Node 最多只运行一个 Pod 副本的场景。正如其名称所揭示的，DaemonSet 通常用于运行 daemon。
+- `Daemonset` 用于每个Node 最多只运行一个 Pod 副本的场景。正如其名称所揭示的，DaemonSet 通常用于运行 daemon。比如像日志采集每个节点都要运行一个日志采集pod
 
-- `Statefuleset` 能够保证 Pod 的每个副本在整个生命周期中名称是不变的，而其他Controller 不提供这个功能。当某个 Pod 发生故障需要删除并重新启动时，Pod 的名称会发生变化，同时 StatefuleSet 会保证副本按照固定的顺序启动、更新或者删除。
+- `Statefuleset` 能够保证 Pod 的每个副本在整个生命周期中名称是不变的，而其他Controller 不提供这个功能。当某个 Pod 发生故障需要删除并重新启动时，Pod 的名称会发生变化，同时 StatefuleSet 会保证副本按照固定的顺序启动、更新或者删除。pod-xxx创建的pod名称是动态的，通过Statefuleset保持创建pod名称是固定的，同时按一定顺序进行启动，比如启动3个pod，启动顺序pod-1、pod-2、pod-3。
 
 - `Job`  用于运行结束就删除的应用，而其他 Controller 中的 Pod 通常是长期持续运行。
 
-#### 1.3 Controller 如何管理 Pod
+####  1.3 Controller 如何管理 Pod
 
 **`注意: Controller 通过 label 关联起来 Pods`**
 
 ![image-20230307105007568](https://minioweb.baizhiedu.xin/typora-imgs/2023/03/07/image-20230307105007568.png)
+
+Deployment通过标签方式关联pod，从而管理pod 
 
 ### 2 Deployment
 
@@ -2405,7 +2434,12 @@ spec:
 # 部署应用
 $ kubectl apply -f app.yaml
 # 查看 deployment
-$ kubectl get deployment
+$ kubectl get deployment|deploy
+NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deployment   3/3     3            3           27s
+$ kubectl get deployment --show-labels
+NAME               READY   UP-TO-DATE   AVAILABLE   AGE   LABELS
+nginx-deployment   3/3     3            3           60s   app=nginx-deployment
 # 查看 pod
 $ kubectl get pod -o wide
 # 查看 pod 详情
@@ -2418,6 +2452,7 @@ $ kubectl logs pod-name
 $ kubectl exec -it pod-name -- bash
 # 输出到文件
 $ kubectl get deployment nginx-deployment -o yaml >> test.yaml
+$ kubectl get deployment nginx-deployment -o json >> test.json
 ```
 
 - `NAME` 列出了名字空间中 Deployment 的名称。
@@ -2433,6 +2468,10 @@ $ kubectl get deployment nginx-deployment -o yaml >> test.yaml
 ```shell
 # 查询副本
 $ kubectl get rs|replicaset
+$ kubectl get replicaset
+NAME                          DESIRED   CURRENT   READY   AGE
+nginx-deployment-85746d9b94   3         3         3       9h
+
 # 伸缩扩展副本
 $ kubectl scale deployment nginx --replicas=5
 ```
@@ -2448,16 +2487,49 @@ $ kubectl scale deployment nginx --replicas=5
 $ kubectl rollout status [deployment nginx-deployment | deployment/nginx]
 # 查看历史
 $ kubectl rollout history deployment nginx-deployment
+deployment.apps/nginx-deployment 
+REVISION  CHANGE-CAUSE
+1         <none> # nginx:1.21
+2         <none> # nginx:1.21.3
+
 # 查看某次历史的详细信息
 $ kubectl rollout history deployment/nginx-deployment --revision=2
+deployment.apps/nginx-deployment with revision #2
+Pod Template:
+  Labels:       app=nginx
+        pod-template-hash=ffdcdcb48
+  Containers:
+   nginx:
+    Image:      nginx:1.21.3
+    Port:       80/TCP
+    Host Port:  0/TCP
+    Limits:
+      cpu:      100m
+      memory:   100Mi
+    Requests:
+      cpu:      100m
+      memory:   100Mi
+    Environment:
+      NG_HOST:  1.1.1.1
+    Mounts:     <none>
+  Volumes:      <none>
 # 回到上个版本
 $ kubectl rollout undo deployment nginx-deployment
 # 回到指定版本
-$ kubectl rollout undo deployment nginx-deployment --to-revision=2
+$ kubectl rollout undo deployment nginx-deployment --to-revision=1
+# 当回退到1的nginx1.21版本
+
 # 重新部署
 $ kubectl rollout restart deployment nginx-deployment
 # 暂停运行，暂停后，对 deployment 的修改不会立刻生效，恢复后才应用设置
-$ kubectl rollout pause deployment ngixn-deployment
+$ kubectl rollout pause deployment ngixn-deployment 
+# 此时修改yaml不配置，再进行apply更新版本，UP-TO-DATE为0，需要通过resume恢复deployment
+[root@k8s-n1 pod]# kubectl apply -f deployment.yml 
+deployment.apps/nginx-deployment configured
+[root@k8s-n1 pod]# kubectl get deployments.apps 
+NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deployment   3/3     0            3   
+
 # 恢复
 $ kubectl rollout resume deployment nginx-deployment
 ```
@@ -2545,7 +2617,7 @@ exportfs
 $ yum install -y nfs-utils
 # 2.创建本地目录
 $ mkdir -p /root/nfs
-# 3.挂载远程nfs目录到本地
+# 3.挂载远程nfs目录到本地 mount -t 挂载文件类型 远程ip:远程路径 本地路径
 $ mount -t nfs 10.15.0.9:/root/nfs /root/nfs
 # 4.写入一个测试文件
 $ echo "hello nfs server" > /root/nfs/test.txt
@@ -2558,7 +2630,13 @@ $ umount -f -l nfs目录
 
 ##### 3 使用 statefulset
 
-- class.yml
+k8s 通过nfs-clinet-provider pod操作k8s，将数据写入nfs共享文件目录。
+
+但一般pod想要操作k8s就必须要有权限，比如项kubeclt这种api需要管理权限。所以就需要对pod赋予权限，pod才能操作
+
+![](/Users/echo/Desktop/k8s/K8s.assets/iShot_2024-03-06_04.28.08.png)
+
+- class.yml 储存对象模板，告诉使用那种存储方式
 
 ```yml
 apiVersion: storage.k8s.io/v1
@@ -2567,7 +2645,7 @@ metadata:
   name: nfs-client
 provisioner: k8s-sigs.io/nfs-subdir-external-provisioner # or choose another name, must match deployment's env PROVISIONER_NAME'
 parameters:
-  archiveOnDelete: "false"
+  archiveOnDelete: "false" # 当pod删除时，是否删除StorageClass
 ```
 
 - nfs-client-provider
@@ -2596,7 +2674,7 @@ spec:
       serviceAccountName: nfs-client-provisioner
       containers:
         - name: nfs-client-provisioner
-          image: chronolaw/nfs-subdir-external-provisioner:v4.0.2
+          image: chronolaw/nfs-subdir-external-provisioner:v4.0.2 # 这里去ali或者tencent云找镜像即可
           volumeMounts:
             - name: nfs-client-root
               mountPath: /persistentvolumes
@@ -2614,38 +2692,38 @@ spec:
             path: /root/nfs/data
 ```
 
-- rbac.yml
+- rbac.yml 给nfs-clinet-provisioner pod赋予操作k8s权限，写入nfs共享数据文件
 
 ```yml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: nfs-client-provisioner
+  name: nfs-client-provisioner # provisioner创建一个ServiceAccount账户
   # replace with namespace where provisioner is deployed
   namespace: kube-system
 ---
-kind: ClusterRole
+kind: ClusterRole # 定义对集群的访问规则
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: nfs-client-provisioner-runner
 rules:
   - apiGroups: [""]
-    resources: ["nodes"]
+    resources: ["nodes"] # 对于节点进行查看
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
-    resources: ["persistentvolumes"]
+    resources: ["persistentvolumes"] # 对于数据卷就可以增删改查
     verbs: ["get", "list", "watch", "create", "delete"]
   - apiGroups: [""]
-    resources: ["persistentvolumeclaims"]
+    resources: ["persistentvolumeclaims"] # 数据卷申请，监控 更新
     verbs: ["get", "list", "watch", "update"]
   - apiGroups: ["storage.k8s.io"]
-    resources: ["storageclasses"]
+    resources: ["storageclasses"] # 存储资源进行查看
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
-    resources: ["events"]
+    resources: ["events"] # 对于事件，可以进行新增 更新 修改
     verbs: ["create", "update", "patch"]
 ---
-kind: ClusterRoleBinding
+kind: ClusterRoleBinding # 对角色进行绑定
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: run-nfs-client-provisioner
@@ -2659,7 +2737,7 @@ roleRef:
   name: nfs-client-provisioner-runner
   apiGroup: rbac.authorization.k8s.io
 ---
-kind: Role
+kind: Role # 创建角色
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: leader-locking-nfs-client-provisioner
@@ -2670,7 +2748,7 @@ rules:
     resources: ["endpoints"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
 ---
-kind: RoleBinding
+kind: RoleBinding # 给账户绑定角色信息
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: leader-locking-nfs-client-provisioner
@@ -2691,12 +2769,12 @@ roleRef:
 
 ```YAML
 apiVersion: v1
-kind: Namespace
+kind: Namespace # 定义一个命名空间 ems
 metadata:
   name: ems
 ---
 apiVersion: storage.k8s.io/v1
-kind: StorageClass
+kind: StorageClass # 定义mysql-nfs存储类
 metadata:
   name: mysql-nfs-sc
   namespace: ems
@@ -2710,7 +2788,7 @@ metadata:
   name: mysql
   labels:
     app: mysql
-  namespace: ems
+  namespace: ems # statefulset pod运行在ems命名空间下面
 spec:
   serviceName: mysql #headless 无头服务  保证网络标识符唯一  必须存在
   replicas: 1
@@ -2729,7 +2807,7 @@ spec:
               value: root
           volumeMounts:
             - mountPath: /var/lib/mysql #自己容器写入数据目录
-              name: data    #保存到指定一个变量中 变量名字就是 data
+              name: data    #保存到指定一个变量中 变量名字就是 data，对应下面volumeClaimTemplates中的data
           ports:
             - containerPort: 3306
       restartPolicy: Always
@@ -2738,17 +2816,19 @@ spec:
         name: data      # 数据卷变量名称
         namespace: ems  # 在哪个命名空间创建数据卷
       spec:
-        accessModes:    # 访问数据卷模式是什么  
+        accessModes:    # 访问数据卷模式是什么  对data存储，可读可写
           - ReadWriteMany
         storageClassName: mysql-nfs-sc # 使用哪个 storage class 模板存储数据
         resources:
           requests:
-            storage: 2G
+            storage: 2G # 请求经过 provisioner最大为资源为 2G
   selector:
     matchLabels:
-      app: mysql
+      app: mysql # 选中pod带有app=mysql的进行调度
 ---
 ```
+
+注意：当删除statefulset时通过`delete -f xxx.yml`，原数据文件不会被删除。但在创建新的statefulset时，会创建一个全新的数据存储文件。
 
 ### 4 DaemonSet
 
@@ -2792,6 +2872,55 @@ spec:
       restartPolicy: Always
 ```
 
+每个节点创建一个elasticsearch日志采集daemonset pod
+
+```yml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluentd-elasticsearch
+  namespace: kube-system
+  labels:
+    k8s-app: fluentd-logging
+spec:
+  selector:
+    matchLabels:
+      name: fluentd-elasticsearch
+  template:
+    metadata:
+      labels:
+        name: fluentd-elasticsearch
+    spec:
+      tolerations:
+      # 这些容忍度设置是为了让该守护进程集在控制平面节点上运行
+      # 如果你不希望自己的控制平面节点运行 Pod，可以删除它们
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: fluentd-elasticsearch
+        image: quay.io/fluentd_elasticsearch/fluentd:v2.5.2
+        resources:
+          limits:
+            memory: 200Mi
+          requests:
+            cpu: 100m
+            memory: 200Mi
+        volumeMounts:
+        - name: varlog
+          mountPath: /var/log
+      # 可能需要设置较高的优先级类以确保 DaemonSet Pod 可以抢占正在运行的 Pod
+      # priorityClassName: important
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: varlog
+        hostPath:
+          path: /var/log
+```
+
 ### 5 Job
 
 #### 5.1 什么是 Job
@@ -2805,6 +2934,8 @@ Job 会创建一个或者多个 Pod，并将继续重试 Pod 的执行，直到�
 你也可以使用 Job 以并行的方式运行多个 Pod。
 
 #### 5.2 使用 Job
+
+下面是一个 Job 配置示例。它负责计算 π 到小数点后 2000 位，并将结果打印出来。 此计算大约需要 10 秒钟完成。
 
 ```yaml
 apiVersion: batch/v1
@@ -2823,6 +2954,31 @@ spec:
   backoffLimit: 4
 ```
 
+以机器可读的方式列举隶属于某 Job 的全部 Pod，你可以使用类似下面这条命令：
+
+```shell
+pods=$(kubectl get pods --selector=batch.kubernetes.io/job-name=pi --output=jsonpath='{.items[*].metadata.name}')
+echo $pods
+```
+
+查看其中一个 Pod 的标准输出：
+
+```shell
+kubectl logs $pods
+```
+
+另外一种查看 Job 日志的方法：
+
+```shell
+kubectl logs jobs/pi
+```
+
+输出类似于：
+
+```
+3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348
+```
+
 #### 5.3 自动清理完成的 Job
 
 完成的 Job 通常不需要留存在系统中。在系统中一直保留它们会给 API 服务器带来额外的压力。 如果 Job 由某种更高级别的控制器来管理，例如 [CronJob](https://kubernetes.io/zh-cn/docs/concepts/workloads/controllers/cron-jobs/)， 则 Job 可以被 CronJob 基于特定的根据容量裁定的清理策略清理掉。
@@ -2836,7 +2992,7 @@ kind: Job
 metadata:
   name: pi-with-ttl
 spec:
-  ttlSecondsAfterFinished: 100
+  ttlSecondsAfterFinished: 100 # job任务执行完毕100秒后 删除pod以及job本身
   template:
     spec:
       containers:
@@ -2975,7 +3131,7 @@ spec:
   type: NodePort
 ```
 
-**`注意:节点端口固定在 30000-32767 之间`**
+**`注意:type: NodePort 节点端口固定在 30000-32767 之间`**
 
 ### 5 多端口
 
@@ -3021,7 +3177,6 @@ spec:
       name: read
       targetPort: 80
       nodePort: 31002
-
   type: NodePort
 ```
 
@@ -3098,7 +3253,7 @@ spec:
   - name: mysql
     port: 3306
     targetPort: 3306
-    type: ClusterIP
+  type: ClusterIP
 ```
 
 ```yml
@@ -3118,7 +3273,7 @@ spec:
       labels:
         app: nginx
     spec:
-      hostNetwork: true
+      hostNetwork: true # 使用主机网络
       containers:
       - name: nginx
         image: nginx:latest
@@ -3140,7 +3295,7 @@ spec:
   - name: http
     port: 8081
     targetPort: 80
-    type: ClusterIP
+  type: ClusterIP
 ```
 
 #### 7.2 相互访问
