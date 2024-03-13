@@ -2406,26 +2406,39 @@ Deployment通过标签方式关联pod，从而管理pod
 
 ```yml
 apiVersion: apps/v1
-kind: Deployment
+kind: Deployment # controller 控制器类型
 metadata:
-  name: nginx-deployment
-  labels:
-    app: nginx
+  name: nginx-deployment # Deployment控制器名称
+  namespace: default # 使用默认命名空间
+  labels: # Deployment
+    app: nginx-deployment
 spec:
-  replicas: 3
-  selector:
+  selector: # 选择哪些标签带有app=nginx的pod进行控制
     matchLabels:
-      app: nginx
-  template:
+      app: nginx # 这里标签与template中labels所对应
+  replicas: 3 # 创建副本数
+  template: # 控制器所管理pod的配置信息
     metadata:
       labels:
         app: nginx
     spec:
       containers:
         - name: nginx
-          image: nginx:1.19
+          image: nginx:1.21.4
+          resources:
+            requests:
+              cpu: 100m
+              memory: 100Mi
+            limits:
+              cpu: 100m
+              memory: 100Mi
+          env: # 环境变量
+            - name: NG_HOST
+              value: 1.1.1.1
           ports:
             - containerPort: 80
+              name: nginx
+      restartPolicy: Always
 ```
 
 #### 2.2 查看 deployment
@@ -2632,7 +2645,7 @@ $ umount -f -l nfs目录
 
 k8s 通过nfs-clinet-provider pod操作k8s，将数据写入nfs共享文件目录。
 
-但一般pod想要操作k8s就必须要有权限，比如项kubeclt这种api需要管理权限。所以就需要对pod赋予权限，pod才能操作
+但一般pod想要操作k8s就必须要有权限，比如项kubeclt这种api需要管理权限。所以就需要对pod赋予权限，pod才能操作。
 
 ![](/Users/echo/Desktop/k8s/K8s.assets/iShot_2024-03-06_04.28.08.png)
 
@@ -3323,7 +3336,7 @@ Container 中的文件在磁盘上是临时存放的，这给 Container 中运�
 
 ### 2 卷的类型
 
-Kubernetes 支持很多类型的卷。 Pod 可以同时使用任意数目的卷类型。 临时卷类型的生命周期与 Pod 相同，但持久卷可以比 Pod 的存活期长。 当 Pod 不再存在时，Kubernetes 也会销毁临时卷；不过 Kubernetes 不会销毁持久卷。 对于给定 Pod 中任何类型的卷，在容器重启期间数据都不会丢失。
+Kubernetes 支持很多类型的卷。 Pod 可以同时使用任意数目的卷类型。 **临时卷类型**的生命周期与 Pod 相同，但**持久卷类型**可以比 Pod 的存活期长。 当 Pod 不再存在时，Kubernetes 也会销毁临时卷；不过 Kubernetes 不会销毁持久卷。 对于给定 Pod 中任何类型的卷，在容器重启期间数据都不会丢失。
 
 卷的核心是一个目录，其中可能存有数据，Pod 中的容器可以访问该目录中的数据。 所采用的不同卷的类型将决定该目录如何形成的、使用何种介质保存数据以及目录中存放的内容。常用的卷类型有 **configMap、emptyDir、local、nfs、secret** 等。
 
@@ -3356,6 +3369,12 @@ spec:
 
 #### 4.1 emptyDir
 
+`emptyDir` 的一些用途：
+
+- 缓存空间，例如基于磁盘的归并排序。
+- 为耗时较长的计算任务提供检查点，以便任务能方便地从崩溃前状态恢复执行。
+- 在 Web 服务器容器服务数据时，保存内容管理器容器获取的文件。
+
 ```yaml
 apiVersion: v1
 kind: Pod
@@ -3378,7 +3397,53 @@ spec:
   volumes:
     - name: shared-data
       emptyDir: {}
+# Deployment 示例
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name:  empty
+  namespace: default
+  labels:
+    app:  empty
+spec:
+  selector:
+    matchLabels:
+      app: empty
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app:  empty
+    spec:
+      containers:
+      - name:  write
+        image:  busybox:latest
+        command: ["/bin/sh", "-c", "echo 'Hello World!' > /data/hello.txt ; sleep 3600"]
+        ports:
+        - containerPort:  80
+          name:  empty
+        volumeMounts:
+        - name: cache-volume
+          mountPath: /data
+      - name:  read
+        image:  busybox:latest
+        command: ["/bin/sh", "-c", "cat /data/hello.txt ; sleep 3600"]
+        ports:
+        - containerPort:  80
+          name:  empty
+        volumeMounts:
+        - name: cache-volume
+          mountPath: /data
+      volumes:
+        - name: cache-volume
+          emptyDir:
+            sizeLimit: 500Mi
+
+      restartPolicy: Always
 ```
+
+通过`kubectl logs -f pod/empty-57d5d859cb-94t2c -c read`查看read pod容器中的日志输出Hello World 
 
 `总结: emptyDir 是 Host 上创建的临时目录，其优点是能够方便地为 Pod 中的容器提供共享存储，不需要额外的配置。它不具备持久性，如果Pod 不存在了，emptyDir 也就没有了。根据这个特性，emptyDir 特别适合 Pod 中的容器需要临时共享存储空间的场景，比如前面的生产者消费者用例。`
 
@@ -3401,11 +3466,97 @@ spec:
   - name: data
     hostPath:
       path: /data/hostpath
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name:  hostpath
+  namespace: default
+  labels:
+    app:  hostpath
+spec:
+  selector:
+    matchLabels:
+      app: hostpath
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app:  hostpath
+    spec:
+      containers:
+      - name:  hostpath
+        image:  busybox:latest
+        command: ["/bin/sh", "-c", "echo 'Hello World!' > /data/hello.txt ; sleep 3600"]
+        ports:
+        - containerPort:  80
+          name:  hostpath
+        volumeMounts:
+        - name: hostpath-volume
+          mountPath: /data
+      affinity:
+        nodeAffinity:
+            #节点必须包含一个键名为 ssd 的标签， 并且该标签的取值必须为 fast 或 superfast。
+          requiredDuringSchedulingIgnoredDuringExecution: 
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: na
+                operator: In 
+                values:
+                - na
+      volumes: # hostpath类型：由k8s内部自己为维护临时的存储卷，随着pod的删除，目录也会被删除
+        - name: hostpath-volume
+          hostPath:
+            path: /root/data
+      restartPolicy: Always
 ```
 
 `总结: 如果 Pod 被销毀了，hostPath 对应的目录还是会被保留，从这一点来看，hostPath 的持久性比emptyDir 强。不过一旦Host 崩溃，hostPath 也就无法访问了。但是这种方式也带来另外一个问题增加了 pod 与节点的耦合。`
 
-#### 4.3 nfs
+#### 4.3 local
+
+`local` 卷所代表的是某个被挂载的本地存储设备，例如磁盘、分区或者目录。
+
+`local` 卷只能用作静态创建的持久卷。不支持动态配置。
+
+与 `hostPath` 卷相比，`local` 卷能够以持久和可移植的方式使用，而无需手动将 Pod 调度到节点。系统通过查看 PersistentVolume 的节点亲和性配置，就能了解卷的节点约束。
+
+然而，`local` 卷仍然取决于底层节点的可用性，并不适合所有应用程序。 如果节点变得不健康，那么 `local` 卷也将变得不可被 Pod 访问。使用它的 Pod 将不能运行。 使用 `local` 卷的应用程序必须能够容忍这种可用性的降低，以及因底层磁盘的耐用性特征而带来的潜在的数据丢失风险。
+
+```yml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: example-pv
+spec:
+  capacity:
+    storage: 100Gi
+  volumeMode: Filesystem
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: local-storage
+  local:
+    path: /mnt/disks/ssd1
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - example-node
+```
+
+
+
+使用 `local` 卷时，你需要设置 PersistentVolume 对象的 `nodeAffinity` 字段。 Kubernetes 调度器使用 PersistentVolume 的 `nodeAffinity` 信息来将使用 `local` 卷的 Pod 调度到正确的节点。
+
+PersistentVolume 对象的 `volumeMode` 字段可被设置为 "Block" （而不是默认值 "Filesystem"），以将 `local` 卷作为原始块设备暴露出来。
+
+使用 `local` 卷时，建议创建一个 StorageClass 并将其 `volumeBindingMode` 设置为 `WaitForFirstConsumer`。要了解更多详细信息，请参考 [local StorageClass 示例](https://kubernetes.io/zh-cn/docs/concepts/storage/storage-classes/#local)。 延迟卷绑定的操作可以确保 Kubernetes 在为 PersistentVolumeClaim 作出绑定决策时，会评估 Pod 可能具有的其他节点约束，例如：如节点资源需求、节点选择器、Pod 亲和性和 Pod 反亲和性。
+
+#### 4.4 nfs
 
 nfs: network filesystem : 网络文件存储系统
 
@@ -3427,6 +3578,43 @@ spec:
     nfs:
       server: <NFS_SERVER_IP>
       path: /path/to/nfs/share
+      
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name:  nfs-deployment
+  namespace: default
+  labels:
+    app:  nfs-deployment
+spec:
+  selector:
+    matchLabels:
+      app: nfs-deployment
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app:  nfs-deployment
+    spec:
+      containers:
+      - name:  nfs-deployment
+        image:  busybox:latest
+        command:  ["/bin/sh", "-c", "echo 'Hello World!' > /data/hello.txt ; sleep 3600"]
+        volumeMounts:
+        - name: nfs-volume
+          mountPath: /data # 容器目录
+      volumes:
+        - name: nfs-volume
+          nfs:
+            server: 10.15.0.25 # 远程服务器地址
+            path: /root/nfs/data # nfs共享路径
+      restartPolicy: Always
 ```
 
 `总结: 相对于 emptyDir 和 hostPath，这种 volume 类型的最大特点就是不依赖 Kuberees Volume 的底层基础设施由独立的存储系统管理，与 Kubernetes 集群是分离的。数据被持久化后，即使整个 Kubernetes 崩溃也不会受损。当然，运维这样的存储系统通常不是一项简单的工作，特别是对可靠性、可用性和扩展性 有较高要求的时候。`
@@ -3442,15 +3630,41 @@ Volume 提供了非常好的数据持久化方案，不过在可管理性上还�
 
 但是 Pod 通常是由应用的开发人员维护，而 Volume 则通常是由存储系统的管理员维护。开发人员要获得上面的信息，要么询问管理员，要么自己就是管理员。这样就带来一个管理上的问题：应用开发人员和系统管理员的职责耦合在一起了。如果系统规模较小或者对于开发环境，这样的情况还可以接受，当集群规模变大，特别是对于生产环境，考虑到效率和安全性，这就成了必须要解决的问题。
 
+Storage Classes工作的基本原理是通过定义标准化的存储配置，使得开发者可以在不关心底层实现的情况下请求和使用存储资源。以下是Storage Classes的基本工作流程：
+
+  1.Storage Class的定义：管理员通过Kubernetes资源清单文件定义Storage Class，指定存储的类型、Provisioner（负责实际创建存储卷的组件）、参数等信息。
+
+  2.动态Provisioning：当应用程序请求动态创建持久卷（Persistent Volume，简称PV）时，Storage Class会根据定义的规则，选择合适的Provisioner，并调用其接口创建相应的存储资源。
+
+  3.绑定和使用：创建成功的PV会被绑定到应用程序的Persistent Volume Claim（PVC）上。应用程序通过PVC使用存储资源，而不需要关心具体的存储实现细节。
+
+![](./K8s.assets/iShot_2024-03-14_06.14.43.png)
+
 #### 5.2 PV &  PVC
 
 Kubernetes 给出的解决方案是 `Persistent Volume 和 Persistent Volume Claim`。
 
-PersistentVolume(PV）是外部存储系统中的一块存储空间，由管理员创建和维护。与 Volume 一样，PV 具有持久性，生命周期独立于 Pod。
+Persistent  Volume(PV）是外部存储系统中的一块存储空间，由管理员创建和维护。与 Volume 一样，PV 具有持久性，生命周期独立于 Pod。
 
-Persistent Volume Claim (PVC)是对 PV 的申请 (Claim）。PVC 通常由普通用户创建和维护。需要为 Pod 分配存储资源时，用户可以创建一个PVC，指明存储资源的容量大小和访问模式 （比如只读）等信息，Kubernetes 会查找并提供满足条件的 PV。有了 PersistentVolumeClaim，用户只需要告诉 Kubernetes 需要什么样的存储资源，而不必关心真正的空间从哪里分配、如何访问等底层细节信息。这些 Storage Provider 的底层信息交给管理员来处理，只有管理员才应该关心创建 PersistentVolume 的细节信息。
+Persistent Volume Claim (PVC)是对 PV 的申请 (Claim）。PVC 通常由普通用户创建和维护。需要为 Pod 分配存储资源时，用户可以创建一个PVC，指明存储资源的容量大小和访问模式 （比如只读）等信息，Kubernetes 会查找并提供满足条件的 PV。有了 PersistentVolumeClaim，用户只需要告诉 Kubernetes 需要什么样的存储资源，而不必关心真正的空间从哪里分配、如何访问等底层细节信息。这些 Storage Provider 的底层信息交给管理员来处理，只有管理员才应该关心创建 Persistent Volume 的细节信息。
 
 #### 5.3 基本使用
+
+简单示例
+
+创建 Storage Class
+
+```yml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: standard
+provisioner: kubernetes.io/aws-ebs
+parameters:
+  type: gp2
+```
+
+上面的示例中,我们定义了一个名为"standard"的Storage ClClass，使用AWS EBS(Elastic Block Store)作为Provisioner，并指定了存储类型为gp2，即通用SSD。
 
 - 创建 PV
 
