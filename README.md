@@ -3630,14 +3630,6 @@ Volume 提供了非常好的数据持久化方案，不过在可管理性上还�
 
 但是 Pod 通常是由应用的开发人员维护，而 Volume 则通常是由存储系统的管理员维护。开发人员要获得上面的信息，要么询问管理员，要么自己就是管理员。这样就带来一个管理上的问题：应用开发人员和系统管理员的职责耦合在一起了。如果系统规模较小或者对于开发环境，这样的情况还可以接受，当集群规模变大，特别是对于生产环境，考虑到效率和安全性，这就成了必须要解决的问题。
 
-Storage Classes工作的基本原理是通过定义标准化的存储配置，使得开发者可以在不关心底层实现的情况下请求和使用存储资源。以下是Storage Classes的基本工作流程：
-
-  1.Storage Class的定义：管理员通过Kubernetes资源清单文件定义Storage Class，指定存储的类型、Provisioner（负责实际创建存储卷的组件）、参数等信息。
-
-  2.动态Provisioning：当应用程序请求动态创建持久卷（Persistent Volume，简称PV）时，Storage Class会根据定义的规则，选择合适的Provisioner，并调用其接口创建相应的存储资源。
-
-  3.绑定和使用：创建成功的PV会被绑定到应用程序的Persistent Volume Claim（PVC）上。应用程序通过PVC使用存储资源，而不需要关心具体的存储实现细节。
-
 ![](./K8s.assets/iShot_2024-03-14_06.14.43.png)
 
 #### 5.2 PV &  PVC
@@ -3674,21 +3666,25 @@ kind: PersistentVolume
 metadata:
   name: nfs-pv
 spec:
-  capacity:
-    storage: 1Gi #指定容量大小
-  accessModes: # 访问模式 
+  capacity: # 指定容量
+    storage: 1Gi
+  volumeMode: Filesystem
+  accessModes: # 当pv挂载到某个节点时，pod对其存储的访问模式
     - ReadWriteMany
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: nfs
+  persistentVolumeReclaimPolicy: Retain # pv的回收策略，
+  storageClassName: nfs # pv类目，归为一类
+  mountOptions:
+    - hard
+    - nfsvers=4.1
   nfs:
-    path: /{nfs-server目录名称}
-    server: {nfs-server IP 地址}
+    path: /root/nfs/data # nfs共享目录必须存在
+    server: 10.15.0.25
 ```
 
 - **accessModes: ** 支持的访问模式有3种：
   
   - ReadWriteOnce 表示 PV 能以 readwrite 模式 mount 到单个节点
-    - 这个PV只能被某个节点以读写方式挂载，意味着这个PV只能被一个Pod挂载到某个节点上，并且这个Pod可以对这个PV进行读写操作。如果尝试在其他节点上挂载这个PV，就会失败。
+    - 这个PV只能被某个节点以读写方式挂载，意味着这个PV只能被一个Pod挂载到某个节点上，并且这个Pod可以对这个PV进行读写操作。如果尝试在其他节点上挂载这个PV，就会失败。比如pod在n3节点上挂载使用这个pv，在其他节点上挂载使用pv就会失败
   - ReadOnlyMany  表示 PV 能以 read-only 模式 mount 到多个节点，
     - 这个PV能被多个节点以只读方式挂载，意味着这个PV可以被多个Pod挂载到多个节点上。
   - ReadWriteMany 表示 PV 能以 read-write 模式 mount 到多个节点。
@@ -3705,6 +3701,8 @@ spec:
     `值得注意的是，`persistentVolumeReclaimPolicy` 只适用于一些类型的 PV，如 NFS、HostPath、iSCSI 等。对于一些云平台提供的存储，如 AWS EBS 和 Azure Disk，由于底层提供商会自动处理 PV 的回收问题，因此该属性不适用。`
 
 - **storageClassName:** 指定 PV 的class 为 nfs。相当于为 PV 设置了一个分类，PVC可以指定 class 申请相应 class 的 PV。
+
+- [volumeModes](https://kubernetes.io/zh-cn/docs/concepts/storage/persistent-volumes/#mount-options)**：**`Filesystem（文件系统）` 和 `Block（块）`，为 Filesystem 的卷会被 Pod 挂载（Mount） 到某个目录。为 `Block`，以便将卷作为原始块设备来使用。 这类卷以块设备的方式交给 Pod 使用，其上没有任何文件系统。 这种模式对于为 Pod 提供一种使用最快可能方式来访问卷而言很有帮助， Pod 和卷之间不存在文件系统层。
 
 - 创建 PVC
 
@@ -3724,6 +3722,8 @@ spec:
   #  matchLabels:
   #    pv-name: nfs-pv
 ```
+
+当创建完毕后 pv和pvc 之间的状态处于一个Bound绑定状态
 
 - 使用 PVC
 
@@ -3870,15 +3870,17 @@ spec:
 - 定义 StorageClass
   
   ```yaml
+  ---
   apiVersion: storage.k8s.io/v1
-  kind: StorageClass
+  kind: StorageClass # 创建一个pv 存储类
   metadata:
     name: mysql-nfs-sc
+    namespace: ems
   provisioner: k8s-sigs.io/nfs-subdir-external-provisioner
   parameters:
-    onDelete: "remain"
+    onDelete: "remain" # 当删除pod时，数据是保留的
   ```
-
+  
 - 使用 StorageClass 动态创建
   
   ```yaml
@@ -3924,6 +3926,18 @@ spec:
       matchLabels:
         app: mysql
   ```
+
+总结：
+
+Storage Classes工作的基本原理是通过定义标准化的存储配置，使得开发者可以在不关心底层实现的情况下请求和使用存储资源。以下是Storage Classes的基本工作流程：
+
+![](./K8s.assets/iShot_2024-03-15_18.08.19.png)
+
+  1.Storage Class的定义：管理员通过Kubernetes资源清单文件定义Storage Class，指定存储的类型、Provisioner（负责实际创建存储卷的组件）、参数等信息。
+
+  2.动态Provisioning：当应用程序请求动态创建持久卷（Persistent Volume，简称PV）时，Storage Class会根据定义的规则，选择合适的Provisioner，并调用其接口创建相应的存储资源。
+
+  3.绑定和使用：创建成功的PV会被绑定到应用程序的Persistent Volume Claim（PVC）上。应用程序通过PVC使用存储资源，而不需要关心具体的存储实现细节。
 
 ## 第七章 ConfigMap & Secret
 
@@ -3993,7 +4007,7 @@ ConfigMap 可以通过三种方式进行配置数据的注入：
     metadata:
       name: app-config
     data:
-      application.yml: |
+      application.yml: | # |代表文件解析内容，代表将|后内容输出到application.yml文件中
         name: xiaochen
     ```
   
@@ -4006,13 +4020,15 @@ ConfigMap 可以通过三种方式进行配置数据的注入：
     $ echo -n 123456 > ./password
     $ kubectl create configmap myconfigmap --from-file=./username --from-file=./password
     ```
-
+    
+    根据创建文件的名为key，value为文件内容。username=admin，password=123456
+  
 - **通过文件夹创建**：
   
   - 可以将多个配置文件放在同一个文件夹下，然后使用`kubectl create configmap`命令来创建configmap，例如：
   
   - ```shell
-    $ kubectl create configmap my-config --from-file=config-files/
+    $ kubectl create configmap my-config --from-file=config-files/   # config-files/目录下有username和password两个文件
     ```
   
   - 这将创建一个名为`my-config`的configmap，其中包含`config-files/`文件夹下所有的文件内容作为键值对。
@@ -4030,6 +4046,18 @@ ConfigMap 可以通过三种方式进行配置数据的注入：
 - 环境变量中使用
 
 ```yml
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: my-config
+  namespace: default
+data:
+  USERNAME: root
+  PASSWORD: '123456'
+  DB_HOST: '81.69.254.48'
+  PORT: '80'
+  VERSION: '1.0.1'
+---
 apiVersion: v1
 kind: Pod
 metadata:
@@ -4040,9 +4068,9 @@ spec:
     image: busybox
     command: ["/bin/sh", "-c", "echo $BUSY_NAME ; sleep 3600;"]
     env:
-    # name: 是容器需要环境变量名称
+    # name: 是容器需要环境变量名称 比如：当前容器是mysql，这里name：MYSQL_ROOT_PASSWORD
     - name: BUSY_NAME
-    # valueForm: value 来源与什么
+    # valueForm: value 来源与什么，将configmap文件中读取出来
       valueFrom:
         configMapKeyRef:  # 值来源与 configmap  来源与哪个 configmap 来源与哪个 configmap 中 key
           name: app-cm
@@ -4051,6 +4079,37 @@ spec:
     envFrom:
     - configMapRef:
         name: my-config
+--- # Deployment 方式实现
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-container
+  labels:
+    app: my-container
+spec:
+  selector:
+    matchLabels:
+      app: my-container
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: my-container
+    spec:
+      containers:
+        - name: my-container
+          image: busybox:latest
+          command: ["/bin/sh", "-c", "echo $DB_HOST ; sleep 3600;"]
+          env:
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: my-config # 去configMap中 查找my-config配置
+                  key: DB_HOST # 在my-config配置读取 DB_HOST 的值 赋值给DB_HOST，DB_HOST为linux env环境变量
+          envFrom: # envFrom 一次性注入 configmap
+            - configMapRef:
+                name: my-config
+      restartPolicy: Always
 ```
 
 `注意: env 是指定 configmap 中某个 key 进行注入  envForm 将 configmap 中内容全部注入`
@@ -4058,13 +4117,24 @@ spec:
 - 通过 Volume 使用配置
 
 ```yaml
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: appliction-nodejs
+  namespace: default
+data:
+  appliction.yml: |
+    port: 8080
+    username: root
+    password: 123456
+---
 apiVersion: v1
 kind: Pod
 metadata:
-  name: myapp-pod
+  name: my-nodejs
 spec:
   containers:
-    - name: myapp-container
+    - name: my-nodejs
       image: busybox
       command: ["/bin/sh","-c","sleep 3600"]
       volumeMounts:
@@ -4072,8 +4142,37 @@ spec:
           mountPath: /data
   volumes:
     - name: data-volume
-      configMap:
-        name: application-cm
+      configMap: # 根据上面configmap中的配置生成application.yml，将appliction.yml文件挂载到容器的 /data目录下
+        name: appliction-nodejs
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-nodejs
+  labels:
+    app: my-nodejs
+spec:
+  selector:
+    matchLabels:
+      app: my-nodejs
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: my-nodejs
+    spec:
+      containers:
+        - name: my-nodejs
+          image: busybox:latest
+          command: ["/bin/sh", "-c", "echo '' ; sleep 3600;"]
+          volumeMounts:
+            - name: data-volume
+              mountPath: /data
+      volumes:
+        - name: data-volume
+          configMap: # 根据上面app-node-cm.yml中的配置生成application.yml，将appliction.yml文件挂载到容器的 /data目录下
+            name: appliction-nodejs
+      restartPolicy: Always
 ```
 
 ### 2 Secret
@@ -4103,8 +4202,15 @@ Secrets 可以在 Pod 的 spec 中通过 volume 和环境变量的方式引用�
   
   - ```shell
     $ kubectl create secret generic my-secret --from-literal=username=admin --from-literal=password=admin123
+    # generic对后面用户名 和 密码 进行bese64编码
+    # 获取所有secret
+    $ kubeclt get secret
+    # 读取secret详细信息
+    $ kubeclt describe secret/my-secret
+    # 删除secret
+    $ kubeclt delete secret/my-secret
     ```
-
+  
 - **使用 YAML 文件定义**：
   
   - 可以创建一个 YAML 文件来定义 Secret 对象，例如：
@@ -4116,7 +4222,7 @@ Secrets 可以在 Pod 的 spec 中通过 volume 和环境变量的方式引用�
       name: my-secret
     type: Opaque
     data:
-      username: YWRtaW4= # base64 编码后的用户名 admin
+      username: YWRtaW4= # base64 编码后的用户名 admin         echo -n 'admin'| base64
       password: MWYyZDFlMmU2N2Rm # base64 编码后的密码 1f2d1e2e67df
     ```
   
@@ -4135,7 +4241,10 @@ Secrets 可以在 Pod 的 spec 中通过 volume 和环境变量的方式引用�
   - 可以将环境变量的值转换为secret。例如，使用以下命令将当前环境变量的值转换为secret：
   
   - ```shell
-    $ kubectl create secret generic  my-config --from-env-file=<(env)
+    $ kubectl create secret generic  my-env --from-env-file=env文件路径
+    # env文件 env
+    username=root
+    password=123456
     ```
 
 #### 2.2 使用
@@ -4151,7 +4260,7 @@ spec:
   containers:
     - name: myapp-container
       image: busybox
-      command: ["/bin/sh","-c","sleep 3600"]
+      command: ["/bin/sh","-c","echo $USERNAME $PASSWORD ;sleep 3600"]
       env:
         - name: USERNAME
           valueFrom:
@@ -4168,6 +4277,37 @@ spec:
         - secretRef:
               name: my-secret
   restartPolicy: Never
+---
+# 将Secret中配置信息，加载到env 环境变量中
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-env-secret
+  labels:
+    app: my-env-secret
+spec:
+  selector:
+    matchLabels:
+      app: my-env-secret
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: my-env-secret
+    spec:
+      containers:
+        - name: my-env-secret
+          image: busybox:latest
+          command: ["/bin/sh", "-c", "echo $USERNAME $username $password ; sleep 3600;"]
+          env:
+            - name: USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: my-secret # 去secret中 查找my-secret配置
+                  key: username # 在my-secret配置读取 username 的值 赋值给$USERNAME，为linux env环境变量
+          envFrom: # envFrom 一次性注入 secret
+            - secretRef:
+                name: my-secret
 ```
 
 - volume 使用
@@ -4188,7 +4328,49 @@ spec:
   volumes:
     - name: secret-volume
       secret:
-        secretName: aaa
+        secretName: my-secret # secret 名称
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: appliction-nodejs
+  namespace: default
+type: Opaque
+data:
+  port: ODA4MA== # 8080
+  username: cm9vdA== # root 
+  password: MTIzNDU2 # 123456
+  # Example:
+  # password: {{ .Values.password | b64enc }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-nodejs
+  labels:
+    app: my-nodejs
+spec:
+  selector:
+    matchLabels:
+      app: my-nodejs
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: my-nodejs
+    spec:
+      containers:
+        - name: my-nodejs
+          image: busybox:latest
+          command: ["/bin/sh", "-c", "echo '' ; sleep 3600;"]
+          volumeMounts:
+            - name: data-volume
+              mountPath: /data
+      volumes:
+        - name: data-volume
+          secret: # 将secret中配置信息，以文件方式挂载到容器的 /data目录下
+            secretName: appliction-nodejs
+      restartPolicy: Always
 ```
 
 ## 第八章 Ingress
@@ -4229,7 +4411,7 @@ Ingress Controller 是 Kubernetes 中的一种资源，它负责将外部请求�
 2. Ingress Nginx Controller 是官方维护的一个 Ingress Controller，它是使用 Nginx 作为反向代理实现的，可以支持 HTTP 和 HTTPS 等协议，支持负载均衡、路由、HTTPS证书管理等功能。
 3. Traefik Ingress Controller：基于 Go 语言开发的 Ingress Controller，支持多种路由匹配方式和多种后端服务发现方式。
    - **Traefik Ingress Controller: 标准实现 支持 官方 Ingress 路由规则 注意: 这种方式使用繁琐!**
-   - **Traefik Route CRD(customer resuource definition)自定义资源  注意: 使用这种方式简单,自定义资源方式定义路由规则。**
+   - **Traefik Route CRD(customer resuource definition)自定义资源  注意: 使用这种方式简单，自定义资源方式定义路由规则。**
 4. Istio Ingress Controller：基于 Istio Service Mesh 实现的 Ingress Controller，提供了更丰富的负载均衡、流量控制和安全功能。
 5. Kong Ingress Controller：使用 Kong 作为反向代理实现 Ingress 功能，支持 API 管理和 Gateway 功能。
 
