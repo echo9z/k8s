@@ -1,0 +1,10 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: appliction-nodejs
+  namespace: default
+data:
+  appliction.yml: |
+    port: 8080
+    username: root
+    password: 123456

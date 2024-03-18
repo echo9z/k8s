@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mypod
+  labels:
+    name: mypod
+spec:
+  containers:
+  - name: nginx
+    image: nginx:1.21
+    imagePullPolicy: IfNotPresent
+    ports:
+      - containerPort: 80
+
+  - name: redis
+    image: redis:5.0.10
+    imagePullPolicy: IfNotPresent
+    ports:
+      - containerPort: 6379
+  nodeName: k8s-n3

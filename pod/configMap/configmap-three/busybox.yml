@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-container
+  labels:
+    app: my-container
+spec:
+  selector:
+    matchLabels:
+      app: my-container
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: my-container
+    spec:
+      containers:
+        - name: my-container
+          image: busybox:latest
+          command: ["/bin/sh", "-c", "echo $DB_HOST ; sleep 3600;"]
+          env:
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: my-config # 去configMap中 查找my-config配置
+                  key: DB_HOST # 在my-config配置读取 DB_HOST 的值 赋值给DB_HOST，DB_HOST为linux env环境变量
+          envFrom: # envFrom 一次性注入 configmap
+            - configMapRef:
+                name: my-config
+      restartPolicy: Always

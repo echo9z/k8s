@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-pv
+spec:
+  capacity: # 指定容量
+    storage: 1Gi
+  volumeMode: Filesystem
+  accessModes: # 当pv挂载到某个节点时，pod对其存储的访问模式
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain # pv的回收策略，
+  storageClassName: nfs # pv类目，归为一类
+  mountOptions:
+    - hard
+    - nfsvers=4.1
+  nfs:
+    path: /root/nfs/data
+    server: 10.15.0.25

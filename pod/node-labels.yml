@@ -1,0 +1,19 @@
+# 节点标签标签
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-labels
+  labels:
+    name: node-labels
+spec:
+  containers:
+  - name: node-labels
+    image: nginx:1.21
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "500m"
+    ports:
+      - containerPort: 80
+  nodeSelector:
+    disktype: fast # 根据节点标签，将pod创建在指定节点上

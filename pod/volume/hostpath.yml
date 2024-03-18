@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name:  hostpath
+  namespace: default
+  labels:
+    app:  hostpath
+spec:
+  selector:
+    matchLabels:
+      app: hostpath
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app:  hostpath
+    spec:
+      containers:
+      - name:  hostpath
+        image:  busybox:latest
+        command: ["/bin/sh", "-c", "echo 'Hello World!' > /data/hello.txt ; sleep 3600"]
+        ports:
+        - containerPort:  80
+          name:  hostpath
+        volumeMounts:
+        - name: hostpath-volume
+          mountPath: /data
+      affinity:
+        nodeAffinity:
+            #节点必须包含一个键名为 ssd 的标签， 并且该标签的取值必须为 fast 或 superfast。
+          requiredDuringSchedulingIgnoredDuringExecution: 
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: na
+                operator: In 
+                values:
+                - na
+      volumes: # hostpath类型：由k8s内部自己为维护临时的存储卷，随着pod的删除，目录也会被删除
+        - name: hostpath-volume
+          hostPath:
+            path: /root/data
+      restartPolicy: Always

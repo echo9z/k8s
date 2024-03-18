@@ -1,0 +1,23 @@
+# 污点和容忍度
+apiVersion: v1
+kind: Pod
+metadata:
+  name: taint
+  labels:
+    app: taint
+spec:
+  containers:
+    - name: taint
+      image: redis:5.0.10
+      resources:
+        limits:
+          memory: "128Mi"
+          cpu: "500m"
+      ports:
+        - containerPort: 6379
+  # 容忍度，查找Equal相等的节点，将pod调度在节点上
+  tolerations:
+    - key: "ntaint"
+      operator: Equal
+      value: "slow"
+      effect: NoSchedule

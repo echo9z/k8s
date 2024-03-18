@@ -1,0 +1,50 @@
+# pod间亲和性
+apiVersion: v1
+kind: Pod
+metadata:
+  name: podaffinity
+  labels:
+    app: podaffinity
+spec:
+  affinity:
+    podAffinity:
+      # 查找sa域下 pod中必须包含一个键为app标签，并且值为nodeaffinity的节点
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - topologyKey: na
+          labelSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - nodeaffinity
+      # 根据权重优先查找域为sa，且pod标签中为app包含xxx，如果找不到，则在域na中，查找标签type=nginx的pod，如果存在则调度该节点上。如果找不到对应节点，调度器任然会调度pod到任意的节点上
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - podAffinityTerm:
+            topologyKey: sa
+            labelSelector:
+              matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                    - xxx
+          weight: 90 # 取值范围是 1 到 100
+        - podAffinityTerm:
+            topologyKey: na
+            labelSelector:
+              matchExpressions:
+                - key: type
+                  operator: In
+                  values:
+                    - nginx
+          weight: 70
+
+  containers:
+    - name: podaffinity
+      image: redis:5.0.10
+      resources:
+        limits:
+          memory: "128Mi"
+          cpu: "500m"
+      ports:
+        - containerPort: 6379
+# require和preferred同时存在，优先查找require

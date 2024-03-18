@@ -4707,7 +4707,7 @@ metadata:
   name: ems
 ```
 
-可以用 [kubens](https://github.com/ahmetb/kubectx) 快速切换 namespace
+可以用 [kubens](https://github.com/ahmetb/kubectx) 工具快速切换 namespace
 
 ```shell
 # 列出所有命名空间
@@ -4716,6 +4716,8 @@ $ kubens
 $ kubens kube-system
 # 回到上个命名空间
 $ kubens -
+# 当前在那个命名空间
+$ kubens -c
 ```
 
 ### 3 命名空间说明
@@ -4724,6 +4726,7 @@ $ kubens -
 
 - `Node`
 - `Namespace`
+- `StorageClass`
 - `ClusterRole`
 - `ClusterRoleBinding`
 - `CustomResourceDefinition`
@@ -4770,7 +4773,7 @@ $ kubens -
 
 3. 在解压目录中找到`helm`程序，移动到需要的目录中(`mv linux-amd64/helm /usr/local/bin/helm`)
 
-4. 添加仓库: helm repo add bitnami https://charts.bitnami.com/bitnami
+4. 添加仓库: helm repo add bitnami https://charts.bitnami.com/bitnami  查看仓库源：helm repo list 
 
 5. 验证安装: `helm help`.
 
@@ -4796,33 +4799,38 @@ Helm 自带一个强大的搜索命令，可以用来从两种来源中进行搜
 使用 `helm install` 命令来安装一个新的 helm 包。最简单的使用方法只需要传入两个参数：你命名的release名字和你想安装的chart的名称。
 
 ```shell
-[root@k8s-node1 ~]# helm install nginx bitnami/nginx
+[root@k8s-node1 ~]# helm install nginx bitnami/nginx 
 NAME: nginx
-LAST DEPLOYED: Wed Apr  5 07:18:04 2023
-NAMESPACE: kube-system
+LAST DEPLOYED: Tue Mar 19 01:30:05 2024
+NAMESPACE: default
 STATUS: deployed
 REVISION: 1
 TEST SUITE: None
 NOTES:
 CHART NAME: nginx
-CHART VERSION: 13.2.34
-APP VERSION: 1.23.4
+CHART VERSION: 15.14.0
+APP VERSION: 1.25.4
 
 ** Please be patient while the chart is being deployed **
 NGINX can be accessed through the following DNS name from within your cluster:
 
-    nginx.kube-system.svc.cluster.local (port 80)
+    nginx.default.svc.cluster.local (port 80)
 
 To access NGINX from outside the cluster, follow the steps below:
 
 1. Get the NGINX URL by running these commands:
 
   NOTE: It may take a few minutes for the LoadBalancer IP to be available.
-        Watch the status with: 'kubectl get svc --namespace kube-system -w nginx'
+        Watch the status with: 'kubectl get svc --namespace default -w nginx'
 
-    export SERVICE_PORT=$(kubectl get --namespace kube-system -o jsonpath="{.spec.ports[0].port}" services nginx)
-    export SERVICE_IP=$(kubectl get svc --namespace kube-system nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+    export SERVICE_PORT=$(kubectl get --namespace default -o jsonpath="{.spec.ports[0].port}" services nginx)
+    export SERVICE_IP=$(kubectl get svc --namespace default nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
     echo "http://${SERVICE_IP}:${SERVICE_PORT}"
+
+WARNING: There are "resources" sections in the chart not set. Using "resourcesPreset" is not recommended for production. For production installations, please set the following values according to your workload needs:
+  - cloneStaticSiteFromGit.gitSync.resources
+  - resources
++info https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
 ```
 
 >  注意: 安装chart时创建了一个新的 *release* 对象。上述发布被命名为 `nginx`。 （如果想让Helm生成一个名称，删除发布名称并使用`--generate-name`。）
@@ -4898,11 +4906,19 @@ release "nginx" uninstalled
 
 ```shell
 app/
-  Chart.yaml
-  values.yaml
-  charts/
-  templates/
-  ...
+├── charts/ # 复杂配置
+├── Chart.yaml # 应用描述
+├── templates/ # k8s相关yml
+│   ├── deployment.yaml
+│   ├── _helpers.tpl
+│   ├── hpa.yaml
+│   ├── ingress.yaml
+│   ├── NOTES.txt
+│   ├── serviceaccount.yaml
+│   ├── service.yaml
+│   └── tests/
+│       └── test-connection.yaml
+└── values.yaml # 动态的值 一些数据端口 线程数 最大连接数 等等
 ```
 
 - `templates/` 目录包括了模板文件。当Helm评估chart时，会通过模板渲染引擎将所有文件发送到`templates/`目录中。 然后收集模板的结果并发送给Kubernetes。
@@ -5020,17 +5036,49 @@ service:
 #### 5.4 验证是否存在错误
 
 ```shell
-$ helm lint app
+[root@k8s-n1 my-nginx]# helm lint .
+==> Linting .
+[INFO] Chart.yaml: icon is recommended
+
+1 chart(s) linted, 0 chart(s) failed
 ```
 
 #### 5.5 打包自定义 chart
 
 ```shell
-$ helm package app
+[root@k8s-n1 my-nginx]# helm package .
+Successfully packaged chart and saved it to: /root/pod/helm/my-nginx/my-nginx-0.1.0.tgz
 ```
 
 #### 5.6 安装 chart
 
 ```shell
-$ helm install app myapp-1.tgz
+[root@k8s-n1 my-nginx]# helm install my-nginx ./my-nginx-0.1.0.tgz 
+NAME: my-nginx
+LAST DEPLOYED: Tue Mar 19 03:13:37 2024
+NAMESPACE: ems
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
 ```
+
+#### 5.7 运行结果
+
+```
+[root@k8s-n1 my-nginx]# helm list
+NAME      NAMESPACE    REVISION  UPDATED                      STATUS      CHART           APP VERSION
+my-nginx  ems          1         2024-03-19 03:13:37+0800 CST deployed    my-nginx-0.1.0  1.19       
+[root@k8s-n1 my-nginx]# kubectl get pod
+NAME                     READY   STATUS    RESTARTS   AGE
+nginx-7b9c5bcc97-9g2nb   1/1     Running   0          88s
+[root@k8s-n1 my-nginx]# kubectl get all
+NAME                         READY   STATUS    RESTARTS   AGE
+pod/nginx-7b9c5bcc97-9g2nb   1/1     Running   0          99s
+
+NAME                    READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/nginx   1/1     1            1           99s
+
+NAME                               DESIRED   CURRENT   READY   AGE
+replicaset.apps/nginx-7b9c5bcc97   1         1         1       99s
+```
+

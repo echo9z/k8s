@@ -1,0 +1,32 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute # 类型为 IngressRoute
+metadata:
+  name: nginx-web-ingressroute
+  namespace: default
+spec: # http
+  entryPoints:
+    - web # 对应traefik-deployments文件中 --entrypoints.web.Address=:8000
+  routes: # 当访问www.abcnginx.com、url前缀/notls  www.abcnginx.com/notls/abc 转发whoami的service内部网络，再通过service转发到8080的pod服务中
+  - match: Host(`www.abcnginx.com`) || PathPrefix(`/notls`)
+    kind: Rule
+    services:
+    - name: nginx-serivce
+      port: 80
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: nginx-websecure-ingressroutetls
+  namespace: default
+spec: # https 带有tls域名证书
+  entryPoints:
+    - websecure # 对应traefik-deployments文件中 --entrypoints.websecure.Address=:4443
+  routes: # 当访问www.abcnginx.com、url前缀/tls  www.abcnginx.com/notls/abc 转发whoami的service内部网络，再通过service转发到8080的pod服务中
+  - match: Host(`www.abcnginx.com`) || PathPrefix(`/tls`)
+    kind: Rule
+    services:
+    - name: nginx-serivce
+      port: 80
+  tls: # tls 域名解析器，使用traefik-deployments文件中 --certificatesresolvers.myresolver.acme.tlschallenge ...
+    certResolver: myresolver

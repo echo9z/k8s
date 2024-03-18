@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name:  empty
+  namespace: default
+  labels:
+    app:  empty
+spec:
+  selector:
+    matchLabels:
+      app: empty
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app:  empty
+    spec:
+      containers:
+      - name:  write
+        image:  busybox:latest
+        command: ["/bin/sh", "-c", "echo 'Hello World!' > /data/hello.txt ; sleep 3600"]
+        ports:
+        - containerPort:  80
+          name:  empty
+        volumeMounts:
+        - name: cache-volume
+          mountPath: /data
+      - name:  read
+        image:  busybox:latest
+        command: ["/bin/sh", "-c", "cat /data/hello.txt ; sleep 3600"]
+        ports:
+        - containerPort:  80
+          name:  empty
+        volumeMounts:
+        - name: cache-volume
+          mountPath: /data
+      volumes: # emptyDir类型：由k8s内部自己为维护临时的存储卷，随着pod的删除，目录也会被删除
+        - name: cache-volume
+          emptyDir:
+            sizeLimit: 500Mi
+
+      restartPolicy: Always

@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name:  nfs-deployment
+  namespace: default
+  labels:
+    app:  nfs-deployment
+spec:
+  selector:
+    matchLabels:
+      app: nfs-deployment
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app:  nfs-deployment
+    spec:
+      containers:
+      - name:  nfs-deployment
+        image:  busybox:latest
+        command:  ["/bin/sh", "-c", "echo 'Hello World!' > /data/hello.txt ; sleep 3600"]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: 100m
+            memory: 100Mi
+        volumeMounts:
+        - name: nfs-volume
+          mountPath: /data # 容器目录
+      volumes:
+        - name: nfs-volume
+          nfs:
+            server: 10.15.0.25 # 远程服务器地址
+            path: /root/nfs/data # nfs共享路径
+      restartPolicy: Always

@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-nodejs
+  labels:
+    app: my-nodejs
+spec:
+  selector:
+    matchLabels:
+      app: my-nodejs
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: my-nodejs
+    spec:
+      containers:
+        - name: my-nodejs
+          image: busybox:latest
+          command: ["/bin/sh", "-c", "echo '' ; sleep 3600;"]
+          volumeMounts:
+            - name: data-volume
+              mountPath: /data
+      volumes:
+        - name: data-volume
+          configMap: # 根据上面app-node-cm.yml中的配置生成application.yml，将appliction.yml文件挂载到容器的 /data目录下
+            name: appliction-nodejs
+      restartPolicy: Always

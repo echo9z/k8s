@@ -1,0 +1,9 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass # 创建一个pv 存储类
+metadata:
+  name: mysql-nfs-sc
+  namespace: ems
+provisioner: k8s-sigs.io/nfs-subdir-external-provisioner
+parameters:
+  onDelete: "remain" # 当删除pod时，数据是保留的

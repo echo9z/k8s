@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfc-pvc
+  namespace: default
+  labels:
+    app: nfc-pvc
+spec:
+  storageClassName: nfs # 通过className进行选中
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi

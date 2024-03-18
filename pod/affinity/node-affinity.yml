@@ -1,0 +1,47 @@
+# 节点亲和性
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nodeaffinity
+  labels:
+    app: nodeaffinity
+    type: nginx
+spec:
+  affinity:
+    nodeAffinity:
+      # 节点必须包含一个键为disktype标签，并且值为fast 或者 superfast
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: disktype
+                operator: In
+                values:
+                  - fast
+                  - superfast
+      # 根据权重优先查找cpu为intel，intel不存在，则找为amd。如果找不到对应节点，调度器任然会调度pod到任意的节点上
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - preference:
+            matchExpressions:
+              - key: cpu
+                operator: In
+                values:
+                  - intel
+          weight: 90 # 取值范围是 1 到 100
+        - preference:
+            matchExpressions:
+              - key: cpu
+                operator: In
+                values:
+                  - amd
+          weight: 70
+
+  containers:
+    - name: nodeaffinity
+      image: nginx:1.21
+      resources:
+        limits:
+          memory: "128Mi"
+          cpu: "500m"
+      ports:
+        - containerPort: 80
+# require和preferred同时存在，优先查找require
