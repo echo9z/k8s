@@ -4785,6 +4785,8 @@ $ kubens -c
 
 - ***Release*** 是运行在 Kubernetes 集群中的 chart 的实例。一个 chart 通常可以在同一个集群中安装多次。每一次安装都会创建一个新的 *release*。以 MySQL chart为例，如果你想在你的集群中运行两个数据库，你可以安装该chart两次。每一个数据库都会拥有它自己的 *release* 和 *release name*。
 
+- 细节[helm 简介及基本使用](https://developer.aliyun.com/article/1157069?spm=a2c6h.24874632.expert-profile.33.23eb77d9Y8rpDw)
+
 ### 4 使用
 
 #### 4.1 搜索 charts
