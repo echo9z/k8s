@@ -1,4 +1,4 @@
----
+--- # whoami pod
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -6,7 +6,6 @@ metadata:
   name: whoami
   labels:
     app: whoami
-
 spec:
   replicas: 2
   selector:
@@ -23,12 +22,12 @@ spec:
           ports:
             - name: web
               containerPort: 80
-      affinity:
+      affinity: # whoami  ingress=treafik
         nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
+          requiredDuringSchedulingIgnoredDuringExecution: 
             nodeSelectorTerms:
-              - matchExpressions:
-                  - key: ingress
-                    operator: NotIn
-                    values:
-                      - traefik
+            - matchExpressions:
+              - key: ingress
+                operator: NotIn
+                values: 
+                  - treafik

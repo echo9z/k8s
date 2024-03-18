@@ -1,12 +1,12 @@
-apiVersion: traefik.containo.us/v1alpha1
-kind: IngressRoute
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute #  IngressRoute
 metadata:
   name: simpleingressroute
   namespace: default
-spec:
+spec: # http
   entryPoints:
-    - web
-  routes:
+    - web # traefik-deployments --entrypoints.web.Address=:8000
+  routes: # your.example.comurl/notls  your.example.com/notls/abc whoamiserviceservice8080pod
   - match: Host(`your.example.com`) && PathPrefix(`/notls`)
     kind: Rule
     services:
@@ -14,19 +14,19 @@ spec:
       port: 80
 
 ---
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: ingressroutetls
   namespace: default
-spec:
+spec: # https tls
   entryPoints:
-    - websecure
-  routes:
+    - websecure # traefik-deployments --entrypoints.websecure.Address=:4443
+  routes: # your.example.comurl/notls  your.example.com/notls/abc whoamiserviceservice8080pod
   - match: Host(`your.example.com`) && PathPrefix(`/tls`)
     kind: Rule
     services:
     - name: whoami
       port: 80
-  tls:
+  tls: # tls traefik-deployments --certificatesresolvers.myresolver.acme.tlschallenge ...
     certResolver: myresolver

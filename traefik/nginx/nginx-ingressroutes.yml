@@ -1,32 +1,32 @@
-apiVersion: traefik.containo.us/v1alpha1
-kind: IngressRoute
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute #  IngressRoute
 metadata:
-  name: nginx-web-route
+  name: nginx-web-ingressroute
   namespace: default
-spec:
+spec: # http
   entryPoints:
-    - web
-  routes:
-    - match: Host(`nginx.com`)
-      kind: Rule
-      services:
-        - name: nginx
-          port: 80
+    - web # traefik-deployments --entrypoints.web.Address=:8000
+  routes: # www.abcnginx.comurl/notls  www.abcnginx.com/notls/abc whoamiserviceservice8080pod
+  - match: Host(`www.abcnginx.com`) || PathPrefix(`/notls`)
+    kind: Rule
+    services:
+    - name: nginx-serivce
+      port: 80
 
 ---
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
-  name: nginx-websecure-route
+  name: nginx-websecure-ingressroutetls
   namespace: default
-spec:
+spec: # https tls
   entryPoints:
-    - websecure
-  routes:
-    - match: Host(`nginx.com`)
-      kind: Rule
-      services:
-        - name: nginx
-          port: 80
-  tls:
+    - websecure # traefik-deployments --entrypoints.websecure.Address=:4443
+  routes: # www.abcnginx.comurl/tls  www.abcnginx.com/notls/abc whoamiserviceservice8080pod
+  - match: Host(`www.abcnginx.com`) || PathPrefix(`/tls`)
+    kind: Rule
+    services:
+    - name: nginx-serivce
+      port: 80
+  tls: # tls traefik-deployments --certificatesresolvers.myresolver.acme.tlschallenge ...
     certResolver: myresolver

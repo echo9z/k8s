@@ -1,9 +1,8 @@
----
+--- # whoami内部网络转发 到 labels带有app=whoami的pod
 apiVersion: v1
 kind: Service
 metadata:
   name: whoami
-
 spec:
   ports:
     - protocol: TCP

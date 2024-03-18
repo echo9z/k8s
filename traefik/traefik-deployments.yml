@@ -23,12 +23,10 @@ spec:
       labels:
         app: traefik
     spec:
-      hostNetwork: true
-      dnsPolicy: ClusterFirstWithHostNet     # 调整策略
       serviceAccountName: traefik-ingress-controller
       containers:
         - name: traefik
-          image: traefik:v2.9
+          image: traefik:v2.11
           args:
             - --api.insecure
             - --accesslog
@@ -38,8 +36,8 @@ spec:
             - --certificatesresolvers.myresolver.acme.tlschallenge
             - --certificatesresolvers.myresolver.acme.email=foo@you.com
             - --certificatesresolvers.myresolver.acme.storage=acme.json
-#             Please note that this is the staging Let's Encrypt server.
-#             Once you get things working, you should remove that whole line altogether.
+            # Please note that this is the staging Let's Encrypt server.
+            # Once you get things working, you should remove that whole line altogether.
             - --certificatesresolvers.myresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
           ports:
             - name: web
@@ -48,6 +46,29 @@ spec:
               containerPort: 4443
             - name: admin
               containerPort: 8080
-      # 修改为指定 运行 traefik controller 节点
-      nodeName: k8s-n4
 
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  namespace: default
+  name: whoami
+  labels:
+    app: whoami
+
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: whoami
+  template:
+    metadata:
+      labels:
+        app: whoami
+    spec:
+      containers:
+        - name: whoami
+          image: traefik/whoami
+          ports:
+            - name: web
+              containerPort: 80

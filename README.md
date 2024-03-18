@@ -4421,6 +4421,230 @@ Ingress Controller 是 Kubernetes 中的一种资源，它负责将外部请求�
 
 具体参考: https://doc.traefik.io/traefik/user-guides/crd-acme/
 
+新增一台服务器为k8s-n4节点，用于运行Ingress Traefik负载均衡节点。注意：按照第二章进行安装k8s
+
+treafik官网提供一个例子，将ingress treafik pod通过节点的亲和性调度到k8s-n4，给k8s-n4上打一个标签
+
+```bash
+kubectl label nodes/k8s-n4 ingress=treafik
+```
+
+一般使用k8s第三方组件，都会有crd自定义资源文件和 rbac文件
+```                      bash
+# Install Traefik Resource Definitions:
+kubectl apply -f https://raw.githubusercontent.com/traefik/traefik/v2.11/docs/content/reference/dynamic-configuration/kubernetes-crd-definition-v1.yml
+
+# Install RBAC for Traefik:
+kubectl apply -f https://raw.githubusercontent.com/traefik/traefik/v2.11/docs/content/reference/dynamic-configuration/kubernetes-crd-rbac.yml                    
+```
+
+创建service 内部网络
+
+```yml
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik
+spec:
+  ports:
+    - protocol: TCP
+      name: web
+      port: 8000
+    - protocol: TCP
+      name: admin
+      port: 8080
+    - protocol: TCP
+      name: websecure
+      port: 4443
+  selector: # 选中pod容器中为app=treafik的容器，容器内部以CusrerIP进行通信
+    app: traefik
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami
+spec:
+  ports:
+    - protocol: TCP
+      name: web
+      port: 80
+  selector: # 选中pod容器中为app=whoami的容器，容器内部以CusrerIP进行通信
+    app: whoami
+```
+
+创建treafik负载均衡pod，和应用实例pod
+
+```yml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  namespace: default
+  name: traefik-ingress-controller
+
+--- # traefik 负载均衡 运行在k8s-n4
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  namespace: default
+  name: traefik
+  labels:
+    app: traefik
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traefik
+  template:
+    metadata:
+      labels:
+        app: traefik
+    spec:
+      hostNetwork: true # 使用宿主机的网络
+      serviceAccountName: traefik-ingress-controller # 调整策略
+      containers:
+        - name: traefik
+          image: ccr.ccs.tencentyun.com/k7scn/traefik:v2.11.0 # traefik:v2.11
+          args: # treafik 这里做域名证书的申请
+            - --api.insecure
+            - --accesslog
+            - --entrypoints.web.Address=:8000
+            - --entrypoints.websecure.Address=:4443
+            - --providers.kubernetescrd
+            - --certificatesresolvers.myresolver.acme.tlschallenge
+            - --certificatesresolvers.myresolver.acme.email=foo@you.com
+            - --certificatesresolvers.myresolver.acme.storage=acme.json
+            # Please note that this is the staging Let's Encrypt server.
+            # Once you get things working, you should remove that whole line altogether.
+            - --certificatesresolvers.myresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
+          ports: #  # traefik pod的 80000 4443 8080端口
+            - name: web
+              containerPort: 8000
+            - name: websecure
+              containerPort: 4443
+            - name: admin
+              containerPort: 8080
+      nodeName: k8s-n4 # 将treafik 负载pod 指定到k8s-n4上
+
+--- # whoami pod应用服务
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  namespace: default
+  name: whoami
+  labels:
+    app: whoami
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: whoami
+  template:
+    metadata:
+      labels:
+        app: whoami
+    spec:
+      containers:
+        - name: whoami
+          image: traefik/whoami
+          ports:
+            - name: web
+              containerPort: 80
+      affinity: # 将whoami 应用容器角根据反亲和性，调度到非标签为ingress=treafik的节点上
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution: 
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: ingress
+                operator: NotIn
+                values: 
+                  - treafik
+```
+
+创建ingress路由
+
+```yml
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute # 类型为 IngressRoute
+metadata:
+  name: simpleingressroute
+  namespace: default
+spec: # http
+  entryPoints:
+    - web # 对应traefik-deployments文件中 --entrypoints.web.Address=:8000
+  routes: # 当访问your.example.com、url前缀/notls  your.example.com/notls/abc 转发whoami的service内部网络，再通过service转发到8080的pod服务中
+  - match: Host(`your.example.com`) && PathPrefix(`/notls`)
+    kind: Rule
+    services:
+    - name: whoami
+      port: 80
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ingressroutetls
+  namespace: default
+spec: # https 带有tls域名证书
+  entryPoints:
+    - websecure # 对应traefik-deployments文件中 --entrypoints.websecure.Address=:4443
+  routes: # 当访问your.example.com、url前缀/notls  your.example.com/notls/abc 转发whoami的service内部网络，再通过service转发到8080的pod服务中
+  - match: Host(`your.example.com`) && PathPrefix(`/tls`)
+    kind: Rule
+    services:
+    - name: whoami
+      port: 80
+  tls: # tls 域名解析器，使用traefik-deployments文件中 --certificatesresolvers.myresolver.acme.tlschallenge ...
+    certResolver: myresolver
+```
+
+在k8s-n4上访问
+
+```ba
+[root@k8s-n4 ~]# curl http://your.example.com:8000/notls
+Hostname: whoami-589c987459-hn2qk
+IP: 127.0.0.1
+IP: ::1
+IP: 10.244.2.10
+IP: fe80::800a:deff:fe8d:88b
+RemoteAddr: 10.244.4.0:50954
+GET /notls HTTP/1.1
+Host: your.example.com:8000
+User-Agent: curl/7.29.0
+Accept: */*
+Accept-Encoding: gzip
+X-Forwarded-For: 10.15.0.24
+X-Forwarded-Host: your.example.com:8000
+X-Forwarded-Port: 8000
+X-Forwarded-Proto: http
+X-Forwarded-Server: k
+
+# curl -k 不校验tls证书
+[root@k8s-n4 ~]# curl -k https://your.example.com:4443/tls
+Hostname: whoami-589c987459-qgmjl
+IP: 127.0.0.1
+IP: ::1
+IP: 10.244.1.12
+IP: fe80::7400:74ff:fe2f:d2a2
+RemoteAddr: 10.244.4.0:40178
+GET /tls HTTP/1.1
+Host: your.example.com:4443
+User-Agent: curl/7.29.0
+Accept: */*
+Accept-Encoding: gzip
+X-Forwarded-For: 10.15.0.24
+X-Forwarded-Host: your.example.com:4443
+X-Forwarded-Port: 4443
+X-Forwarded-Proto: https
+X-Forwarded-Server: k8s-n4
+X-Real-Ip: 10.15.0.24
+```
+
+梳理treafik-ingress转发流程
+
+![](./K8s.assets/traefik-ingress.png)
+
+
 #### 1 pod 无法访问 Service 解决方案
 
 ```shell
