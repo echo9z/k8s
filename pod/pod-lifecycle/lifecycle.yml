@@ -1,0 +1,47 @@
+apiVersion: apps/v1 # 指定api版本，此值必须在kubectl api-versions中。业务场景一般首选”apps/v1“
+kind: Deployment
+metadata: # 资源的元数据/属性 
+  name: nginx
+  namespace: kube-public
+  # 标签作用: 就是用来给 k8s 中对象起别名, 有了别名可以过滤和筛选
+  labels:
+    k8s-app: nginx
+    version: "1.0"
+    env: dev
+  annotations:  # 自定义注释列表
+    name: nginx-demo
+spec:
+  # nodeName: k8s-node3
+  replicas: 2     # 声明副本数目，创建pod数目
+  revisionHistoryLimit: 3     # 保留历史版本
+
+  selector:         #定义标签选择器
+    matchLabels :   #定义匹配标签
+      k8s-app: nginx #匹配上面的标签，需与上面的标签定义的保持一致
+      version: "1.0"
+      env: dev
+  
+  template:         #【定义业务模板】，如果有多个副本，所有副本的属性会按照模板的相关配置进行匹配
+    metadata:
+      labels:
+        k8s-app: nginx #匹配上面的标签，需与上面的标签定义的保持一致
+        version: "1.0"
+        env: dev
+    spec:
+      containers:
+        - name: nginx # 定义容器名
+          image: nginx:1.21 # 定义容器使用的镜像以及版本
+          imagePullPolicy: IfNotPresent #镜像拉取策略，如果本地已经存在该镜像，将不会再次拉取
+          resources:
+            limits:
+              memory: "128Mi" # CPU，"1"(1核心) = 1000m。将用于docker run --cpu-shares参数
+              cpu: "500m"
+          ports:
+            - containerPort: 8080
+          lifecycle:
+             postStart: #容器创建过程中执行
+               exec:
+                 command: ["/bin/sh","-c","echo postStart >> /start.txt"]
+             preStop:  #容器终止之前执行
+               exec:
+                 command: ["/bin/sh","-c","echo postStop >> /stop.txt && sleep 5"]

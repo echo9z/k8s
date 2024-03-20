@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-exec
+  labels:
+    app: nginx-exec
+spec:
+  containers:
+    - name: nginx-exec
+      image: nginx:1.19
+      imagePullPolicy: IfNotPresent
+      args: # 创建容器后 7秒后在启动nginx，加了sleep 7，健康检查容器创建后5秒执行
+        - /bin/sh
+        - -c
+        - sleep 7;nginx -g "daemon off;"
+      livenessProbe:
+        exec:
+          command:
+            - ls # 查看是否有nginx进程文件
+            - /var/run/nginx.pid
+        initialDelaySeconds: 5 #初始化时间5s
+        periodSeconds: 4 #检测间隔时间4s
+        timeoutSeconds: 1 #默认检测超时时间为1s
+        failureThreshold: 3 #默认失败次数为3次，达到3次后重启pod
+        successThreshold: 1 #默认成功次数为1次，1 次代表成功
+  restartPolicy: Always #Always OnFailure Never
