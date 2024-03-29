@@ -761,7 +761,7 @@ $ kubectl get pod -w
 
 ```bash
 pod：kubectl run nginx(pod名称) --image=nginx:1.19
-
+deployment：kubectl create deployment web-ng --image=nginx:1.19 --replicas=3
 container：docker run --name nginx nginx:1.19
 ```
 
