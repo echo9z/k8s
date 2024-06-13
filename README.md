@@ -1,4 +1,4 @@
-# Kubernetes
+Kubernetes
 
 官网: https://kubernetes.io/zh-cn/
 
@@ -1025,6 +1025,10 @@ $ kubectl exec -it nginx-69698bd968-hsn4t -n kube-public -- bash
 $ kubectl logs -f(可选,实时) nginx(pod 名称)
 # 注意: 查看 pod 中指定容器的日志
 $ kubect logs -f pod名称 -c 容器名称
+# 查看 pod 最新日志100行信息 （pod只有一个容器，可以省略-c <container-name>）
+kubectl logs --tail=100 -f <pod-name> -n <namespace>
+# 多个容器：
+kubectl logs --tail=100 -f <pod-name> -c <container-name> -n <namespace>
 ```
 
 #### 2.6 查看 pod 描述信息
@@ -1728,18 +1732,40 @@ $ kubectl top pod nginx-memory-demo
 ```
 
 - `内存请求和限制的目的`
-  
+
   通过为集群中运行的容器配置内存请求和限制，你可以有效利用集群节点上可用的内存资源。 通过将 Pod 的内存请求保持在较低水平，你可以更好地安排 Pod 调度。 通过让内存限制大于内存请求，你可以完成两件事：
-  
+
   - Pod 可以进行一些突发活动，从而更好的利用可用内存。
   - Pod 在突发活动期间，可使用的内存被限制为合理的数量。
 
 - `没有指定内存限制`
-  
+
   如果你没有为一个容器指定内存限制，则自动遵循以下情况之一：
-  
+
   - 容器可无限制地使用内存。容器可以使用其所在节点所有的可用内存， 进而可能导致该节点调用 OOM Killer。 此外，如果发生 OOM Kill，没有资源限制的容器将被杀掉的可行性更大。
   - 运行的容器所在命名空间有默认的内存限制，那么该容器会被自动分配默认限制。
+
+- `查询集群中某个节点资源使用情况`
+
+```shell
+$ kubectl top nodes k8s-n1 
+```
+
+- `查询集群中所有pod资源使用情况`
+
+```shell
+$ kubectl top pod -A
+$ kubectl top pod -A --sort-by=cpu # 按cpu进行排序
+$ kubectl top pod -l app=ngxin -A # 根据leabel至过滤查询资源情况
+$ kubectl top pod -l app=ngxin --sort-by=cpu --no-header=true -A
+
+head -n 2 显示两行命令内容
+$ kubeclt top pod -l app=ng --sort-by=memory --no-headers=true -A |herd -n 1|awk '{print $2}'
+```
+
+--sort-by：支持两个参数 cpu和memory
+
+--no-headers：是否隐藏k8s表头信息
 
 ##### **3 指定 CPU 请求和限制**
 
@@ -4746,6 +4772,26 @@ $ kubens -c
 - `RoleBinding`
 - `ServiceAccount`
 
+### 4 查询所有命名空间下的所有资源
+
+```bash
+kubectl api-versions  # 查看所有apiVersion版本
+kubectl api-resources    # 查看所有资源类型
+```
+
+查询所有命名空间下常用资源
+
+```bash
+kubectl get all -o wide -A 
+```
+
+![1713946376561](./K8s.assets/20240424162422.png)
+
+缺点：kubectl get all 其实查询出来不是全部资源，仅仅是常用资源。仅仅是 service 、deployment、statefulset、daemonset、job、cronjob、replicaset、pod 这个绑定链资源。而 rbac 的 role rolebinding，配置文件 configmap secrets，服务账号 serviceAccount ，service与pod的绑定endpoints都没有查询出来。
+
+
+
+
 ## 第十章 Helm
 
 - 什么是 Helm
@@ -5082,5 +5128,160 @@ deployment.apps/nginx   1/1     1            1           99s
 
 NAME                               DESIRED   CURRENT   READY   AGE
 replicaset.apps/nginx-7b9c5bcc97   1         1         1       99s
+```
+
+## 部署k3s
+
+### 1 简介
+
+[K3s](https://docs.k3s.io/zh) 是轻量级的 Kubernetes。K3s 易于安装，仅需要 Kubernetes 内存的一半，所有组件都在一个小于 100 MB 的二进制文件中。
+
+`k3s` 将安装 `Kubernetes` 所需的一切打包进仅有 `100MB` 大小的二进制文件中。并且，为了减少运行 `k8s` 所需的内存，删除了很多不必要的驱动程序，并用附加组件对其进行替换。这样，它只需要极低的资源就可以运行且安装所需的时间也非常短，因此它能够运行在树莓派等设备上面，即 `master` 和 `agent` 运行在一起的模式。
+
+k3s适用于：Edge、IoT、CI、Development、ARM、嵌入 K8s。
+
+**Architecture**:
+
+![k3s-architecture](./K8s.assets/k3s.png)
+
+- Server 节点指的是运行 `k3s server` 命令的主机，control plane 和数据存储组件由 K3s 管理。
+- Agent 节点指的是运行 `k3s agent` 命令的主机，不具有任何数据存储或 control plane 组件。
+- Server 和 Agent 都运行 kubelet、容器运行时和 CNI。
+
+### 2 安装
+
+单台服务器部署k3s
+
+**k3s 官方安装脚本**
+
+```bash
+curl -sfL https://get.k3s.io | sh -
+```
+
+**cn源安装k3s**
+
+```bash
+root@light:~$ curl –sfL \
+     https://rancher-mirror.oss-cn-beijing.aliyuncs.com/k3s/k3s-install.sh | \
+     INSTALL_K3S_MIRROR=cn sh -s - \
+     --system-default-registry "registry.cn-hangzhou.aliyuncs.com" \
+```
+
+**验证安装**
+
+```bash
+[root@light ~]# sudo k3s kubectl get nodes
+[root@light ~]# k3s kubectl get nodes
+NAME    STATUS   ROLES                  AGE   VERSION
+light   Ready    control-plane,master   6d    v1.29.5+k3s1
+```
+
+k3s服务器状态为 Ready ，表明它既是主节点又是工作节点。
+
+**配置containerd源**
+
+K3s 默认使用的 containerd 容器运行时。而且，可以通过 K3s 的参数来设置 containerd 的 mirror，设置方式如下
+
+```bash
+cat > /etc/rancher/k3s/registries.yaml <<EOF
+mirrors:
+  docker.io:
+    endpoint:
+      - "http://hub-mirror.c.163.com"
+      - "https://docker.mirrors.ustc.edu.cn"
+      - "https://registry.docker-cn.com"
+      - "https://frz7i079.mirror.aliyuncs.com"
+EOF
+
+# 重启k3s服务
+systemctl restart k3s
+```
+
+**配置 kubectl**：
+
+ `kubectl` 来管理 k3s 集群，你可以将 k3s 的 kubeconfig 复制到你的本地机器：
+
+```bash
+[root@light ~]# mkdir -p ~/.kube 
+[root@light ~]# sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config 
+[root@light ~]# sudo chown $(id -u):$(id -g) ~/.kube/config
+```
+
+使用 `kubectl` 命令来与 k3s 集群交互：
+
+```bash
+[root@light ~]# kubectl get nodes
+```
+
+**检查资源使用情况**：
+
+使用以下命令查看集群中资源的使用情况：
+
+```bash
+kubectl top nodes
+kubectl top pods -A
+[root@light ~]# kubectl top pods -A
+NAMESPACE              NAME                                         CPU(cores)   MEMORY(bytes)   
+kube-system            coredns-58c9946f4-bgdf9                      2m           21Mi            
+kube-system            local-path-provisioner-7f4c755b68-r5ctk      1m           9Mi             
+kube-system            metrics-server-5bbb74b77-4fq9v               4m           30Mi            
+kube-system            svclb-traefik-81138457-w2sp7                 0m           0Mi             
+kube-system            traefik-57c89d7764-stfrt                     1m           50Mi 
+```
+
+看到一个基本的 K3s 相关pod列表，包括：
+
+- **Traefik**作为 HTTP 反向代理和负载均衡的入口控制器
+- **CoreDns**管理集群和节点内的 DNS 解析
+- **Local Path Provisioner**提供了一种在每个节点中利用本地存储的方法
+- **Helm**，我使用它来打包、部署
+
+**添加agent节点**
+
+先查看server节点中的token信息
+
+```bash
+# server的node-token值
+[root@light k3s]# cat /var/lib/rancher/k3s/server/node-token 
+K106c905a41bc14765038e2a8d76491ed2b296dbfadb3e86ecde72589dda2f99074::server:7d6dc900e73bf329764bec2ebe3a3de0
+```
+
+在Agent上添加节点
+
+```bash
+# 添加更多的node节点
+# K3S_URL: 为api-server服务的URL地址
+# k3S_TOKEN: 为node注册token字符串
+# K3S_TOKEN: 在master节点的/var/lib/rancher/k3s/server/node-token路径下
+$ curl -sfL https://get.k3s.io | K3S_URL=https://myserver:6443 K3S_TOKEN=XXX sh -
+```
+
+>eg：在每个Agent上执行一下命令：
+>
+>```bash
+>root@light:~$ curl –sfL \
+>     https://rancher-mirror.oss-cn-beijing.aliyuncs.com/k3s/k3s-install.sh | \
+>     INSTALL_K3S_MIRROR=cn  K3S_URL=https://<serverIP>:6443 K3S_TOKEN=<K106c905a41bc14765038e2a8d76491ed2b296dbfadb3e86ecde72589dda2f99074::server:7d6dc900e73bf329764bec2ebe3a3de0> sh -s - \
+>     --system-default-registry "registry.cn-hangzhou.aliyuncs.com" \
+>```
+
+**清理测试环境**
+
+```javascript
+kubectl delete all --all
+```
+
+### 3 卸载k3s
+
+要从 server 节点卸载 K3s，请运行：
+
+```bash
+/usr/local/bin/k3s-uninstall.sh
+```
+
+要从 agent 节点卸载 K3s，请运行：
+
+```bash
+/usr/local/bin/k3s-agent-uninstall.sh
 ```
 
