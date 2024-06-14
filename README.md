@@ -5236,6 +5236,15 @@ kube-system            traefik-57c89d7764-stfrt                     1m          
 - **Local Path Provisioner**提供了一种在每个节点中利用本地存储的方法
 - **Helm**，我使用它来打包、部署
 
+**部署示例应用**：
+
+尝试部署一个简单的应用来验证集群的工作情况。例如，部署一个 Nginx pod：
+
+```bash
+$ kubectl create deployment nginx --image=nginx
+$ kubectl expose deployment nginx --port=80 --type=NodePort
+```
+
 **添加agent节点**
 
 先查看server节点中的token信息
