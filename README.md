@@ -4223,9 +4223,9 @@ Secrets 可以在 Pod 的 spec 中通过 volume 和环境变量的方式引用�
 #### 2.1 定义 Secret
 
 - **使用命令行创建**：
-  
+
   - 可以使用 kubectl create secret 命令来创建 secret，例如：
-  
+
   - ```shell
     $ kubectl create secret generic my-secret --from-literal=username=admin --from-literal=password=admin123
     # generic对后面用户名 和 密码 进行bese64编码
@@ -4236,11 +4236,11 @@ Secrets 可以在 Pod 的 spec 中通过 volume 和环境变量的方式引用�
     # 删除secret
     $ kubeclt delete secret/my-secret
     ```
-  
+
 - **使用 YAML 文件定义**：
-  
+
   - 可以创建一个 YAML 文件来定义 Secret 对象，例如：
-  
+
   - ```yaml
     apiVersion: v1
     kind: Secret
@@ -4251,11 +4251,11 @@ Secrets 可以在 Pod 的 spec 中通过 volume 和环境变量的方式引用�
       username: YWRtaW4= # base64 编码后的用户名 admin         echo -n 'admin'| base64
       password: MWYyZDFlMmU2N2Rm # base64 编码后的密码 1f2d1e2e67df
     ```
-  
+
   - `注意: 这个 YAML 文件定义了一个名为 my-secret 的 Secret 对象，其中包含了两个 base64 编码后的 key-value 对：username 和 password。`
 
 - **使用文件创建:**
-  
+
   - ```shell
     $ echo -n admin >./username
     $ echo -n 123456 > ./password
@@ -4263,9 +4263,9 @@ Secrets 可以在 Pod 的 spec 中通过 volume 和环境变量的方式引用�
     ```
 
 - **通过环境变量创建**：
-  
+
   - 可以将环境变量的值转换为secret。例如，使用以下命令将当前环境变量的值转换为secret：
-  
+
   - ```shell
     $ kubectl create secret generic  my-env --from-env-file=env文件路径
     # env文件 env
@@ -4779,7 +4779,7 @@ kubectl api-versions  # 查看所有apiVersion版本
 kubectl api-resources    # 查看所有资源类型
 ```
 
-查询所有命名空间下常用资源
+#### 查询所有命名空间下常用资源
 
 ```bash
 kubectl get all -o wide -A 
@@ -4787,7 +4787,26 @@ kubectl get all -o wide -A
 
 ![1713946376561](./K8s.assets/20240424162422.png)
 
-缺点：kubectl get all 其实查询出来不是全部资源，仅仅是常用资源。仅仅是 service 、deployment、statefulset、daemonset、job、cronjob、replicaset、pod 这个绑定链资源。而 rbac 的 role rolebinding，配置文件 configmap secrets，服务账号 serviceAccount ，service与pod的绑定endpoints都没有查询出来。
+缺点：kubectl get all 查询出来不是全部资源，仅仅是常用资源。仅仅是 service 、deployment、statefulset、daemonset、job、cronjob、replicaset、pod 这个绑定链资源。而 rbac 的 role rolebinding，配置文件 configmap secrets，服务账号 serviceAccount ，service与pod的绑定endpoints都没有查询出来。
+
+#### 查询k8s集群所有资源的kind种类
+
+只需要查询一个命名空间
+
+```bash
+kubectl api-resources --verbs=list --namespaced -o name
+```
+
+kubectl api-resources：列出 Kubernetes API 中的资源类型
+
+![api-resources](./K8s.assets/api-resources.png)
+
+`--namespaced` 如果为 false，则将返回非命名空间资源，否则默认返回命名空间资源。
+
+`--verbs=list` 参数用于指定想要对资源执行的操作。在这种情况下，`list` 意味着列出这些资源。其他常见的动词包括 `create`、`get`、`update` 和 `delete`，它们分别用于创建、获取、更新和删除资源。
+
+`-o name` 表示仅仅列出名称
+
 
 
 
@@ -4827,7 +4846,7 @@ kubectl get all -o wide -A
 
 - ***Chart*** 代表着 Helm 包。它包含在 Kubernetes 集群内部运行应用程序，工具或服务所需的所有资源定义。你可以把它看作是 Homebrew formula，Apt dpkg，或 Yum RPM 在Kubernetes 中的等价物。
 
-- ***Repository**（仓库）* 是用来存放和共享 charts 的地方。它就像 Perl 的 [CPAN 档案库网络](https://www.cpan.org/) 或是 Fedora 的 [软件包仓库](https://src.fedoraproject.org/)，只不过它是供 Kubernetes 包所使用的。
+- ***Repository*** 是用来存放和共享 charts 的地方。它就像 Perl 的 [CPAN 档案库网络](https://www.cpan.org/) 或是 Fedora 的 [软件包仓库](https://src.fedoraproject.org/)，只不过它是供 Kubernetes 包所使用的。
 
 - ***Release*** 是运行在 Kubernetes 集群中的 chart 的实例。一个 chart 通常可以在同一个集群中安装多次。每一次安装都会创建一个新的 *release*。以 MySQL chart为例，如果你想在你的集群中运行两个数据库，你可以安装该chart两次。每一个数据库都会拥有它自己的 *release* 和 *release name*。
 
@@ -5247,7 +5266,7 @@ $ kubectl expose deployment nginx --port=80 --type=NodePort
 
 **添加agent节点**
 
-先查看server节点中的token信息
+查看server节点中的token信息
 
 ```bash
 # server的node-token值
@@ -5294,3 +5313,191 @@ kubectl delete all --all
 /usr/local/bin/k3s-agent-uninstall.sh
 ```
 
+### 4 部署 Kubernetes Dashboard
+
+#### 4.1 下载 YAML 文件
+
+官方提供的 YAML 文件来部署最新的 Dashboard：
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml
+```
+
+#### 4.2 创建管理员用户
+
+需要创建一个具有足够权限的用户。创建一个新的 YAML 文件 `dashboard-adminuser.yaml`：
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admin-user
+  namespace: kubernetes-dashboard
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-user
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: admin-user
+  namespace: kubernetes-dashboard
+
+```
+
+应用文件：
+
+```bash
+$ kubectl apply -f dashboard-adminuser.yaml
+```
+
+#### 4.3 获取访问令牌
+
+**获取创建的 ServiceAccount 的令牌**：
+
+```bash
+$ kubectl -n kubernetes-dashboard create token admin-user
+```
+
+命令会输出一个令牌（token），在登录 Dashboard 时使用这个令牌，但时效性15分钟。
+
+**获取创建永久有效令牌**
+
+Kubernetes 中，使用 `kubectl create token` 创建的令牌默认具有较短的有效期。如果您希望生成一个永久有效的令牌，可以创建一个长效的 ServiceAccount，并为其绑定合适的权限。
+
+##### 1.创建 ServiceAccount
+
+首先，创建一个新的 ServiceAccount。例如，创建一个名为 `dashboard-admin` 的 ServiceAccount：
+
+```bash
+kubectl create serviceaccount dashboard-admin -n kubernetes-dashboard
+```
+
+##### 2.创建 ClusterRoleBinding
+
+为这个 ServiceAccount 绑定 `cluster-admin` 角色，以便它拥有集群范围的管理权限：
+
+```bash
+kubectl create clusterrolebinding dashboard-admin-binding --clusterrole=cluster-admin --serviceaccount=kubernetes-dashboard:dashboard-admin
+```
+
+##### 3.创建永久有效的令牌
+
+创建一个用于访问 Dashboard 的长效令牌。要实现这一点，可以创建一个 Secret 并手动设置 `token`：
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dashboard-admin-token
+  namespace: kubernetes-dashboard
+  annotations:
+    kubernetes.io/service-account.name: dashboard-admin
+type: kubernetes.io/service-account-token
+```
+
+将上述内容保存为 `dashboard-admin-token.yaml` 文件，然后应用它：
+
+```bash
+kubectl apply -f dashboard-admin-token.yaml
+```
+
+**1至3上述步骤合成一个yaml文件**：
+
+一个完整的 YAML 文件，它将创建一个 ServiceAccount、绑定 `cluster-admin` 角色，并生成一个持久有效的令牌：
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dashboard-admin
+  namespace: kubernetes-dashboard
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dashboard-admin-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: dashboard-admin
+  namespace: kubernetes-dashboard
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dashboard-admin-token
+  namespace: kubernetes-dashboard
+  annotations:
+    kubernetes.io/service-account.name: dashboard-admin
+type: kubernetes.io/service-account-token
+```
+
+应用 YAML 文件，将上述内容保存到一个文件中，例如 `dashboard-admin.yaml`：
+
+```bah
+kubectl apply -f dashboard-admin.yaml
+```
+
+##### 4.获取永久令牌
+
+获取创建的长效令牌，可以使用以下命令：
+
+```bash
+kubectl describe secret -n kubernetes-dashboard $(kubectl get secret -n kubernetes-dashboard | grep dashboard-admin-token | awk '{print $1}')
+```
+
+#### 4.4 访问 Dashboard
+
+**1.启动本地代理**：
+
+```bash
+$ kubectl proxy
+```
+
+这个命令会在本地启动一个代理服务器，使你可以通过本地地址访问 Dashboard。
+
+**2.访问 Dashboard**：
+
+打开你的浏览器，访问以下地址：
+
+```url
+http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/
+```
+
+在登录页面，选择 “Token” 选项，粘贴之前获取的令牌，然后点击登录。
+
+#### 4.5 通过 NodePort 暴露 Dashboard
+
+集群外部访问 Dashboard，可以通过 NodePort 暴露。使用宿主机端口，通过Node节点的IP和端口就能访问 Dashboard。
+
+**编辑 kubernetes-dashboard 服务**：
+
+```bash
+$ kubectl -n kubernetes-dashboard edit service kubernetes-dashboard
+```
+
+**修改类型为 NodePort**：
+
+```yaml
+  ports:
+  - nodePort: 30001 # 节点暴露端口
+    port: 443
+    protocol: TCP
+    targetPort: 8443
+  selector:
+    k8s-app: kubernetes-dashboard
+  sessionAffinity: None
+  type: NodePort # 暴露节点
+```
+
+**保存并退出**：
+
+通过 `https://<NodeIP>:<NodePort>` 访问 Kubernetes Dashboard。在上述例子中，可以通过访问 `https://<NodeIP>:30001`。
