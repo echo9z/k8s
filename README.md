@@ -4807,10 +4807,32 @@ kubectl api-resources：列出 Kubernetes API 中的资源类型
 
 `-o name` 表示仅仅列出名称
 
+![kind](./K8s.assets/kind.png)
 
+#### 查看所有命名空间下的所有资源
 
+```bash
+$ kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get --show-kind --ignore-not-found -A
+```
+![res](./K8s.assets/api-res.png)
+#### 查询某个命名空间下的所有资源
+```bash
+$ kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get --show-kind --ignore-not-found -n <younamespace>
+```
+### 5 查询当前命名空间已分配的资源情况
 
+查询当前命名空间（namespace）使用的剩余资源配额
 
+```bash
+$ kubectl describe quota --namespace=<namespace>
+$ kubectl get quota --namespace=<namespace>
+```
+
+查询具体的资源使用情况
+```bash
+$ kubectl get resourcequotas --namespace=<your-namespace> -o jsonpath="{.items[0].status.hard}"
+$ kubectl get resourcequotas --namespace=<your-namespace> -o jsonpath="{.items[0].status.used}"
+```
 ## 第十章 Helm
 
 - 什么是 Helm
